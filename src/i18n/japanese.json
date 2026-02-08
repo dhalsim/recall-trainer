@@ -1,0 +1,20 @@
+{
+  "Select your main language for the app": "アプリの使用言語を選択してください",
+  "Select your target (learning) language": "学習する言語を選択してください",
+  "Enter words I struggle with": "苦手な単語を入力する",
+  "Take a test": "テストを受ける",
+  "English": "英語",
+  "Japanese": "日本語",
+  "Turkish": "トルコ語",
+  "Continue": "続ける",
+  "Add vocabulary pairs (one per line, format: source | target)": "単語ペアを追加（1行に1つ、形式：原文 | 訳）",
+  "Start test": "テスト開始",
+  "Correct": "正解",
+  "Incorrect": "不正解",
+  "Round summary": "ラウンドの結果",
+  "Your answer": "あなたの回答",
+  "Correct answer": "正解",
+  "Next round": "次のラウンド",
+  "vocabulary entries": "単語",
+  "No vocabulary entries yet. Add some words first.": "単語がまだありません。まず単語を追加してください。"
+}

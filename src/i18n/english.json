@@ -1,0 +1,20 @@
+{
+  "Select your main language for the app": "Select your main language for the app",
+  "Select your target (learning) language": "Select your target (learning) language",
+  "Enter words I struggle with": "Enter words I struggle with",
+  "Take a test": "Take a test",
+  "English": "English",
+  "Japanese": "Japanese",
+  "Turkish": "Turkish",
+  "Continue": "Continue",
+  "Add vocabulary pairs (one per line, format: source | target)": "Add vocabulary pairs (one per line, format: source | target)",
+  "Start test": "Start test",
+  "Correct": "Correct",
+  "Incorrect": "Incorrect",
+  "Round summary": "Round summary",
+  "Your answer": "Your answer",
+  "Correct answer": "Correct answer",
+  "Next round": "Next round",
+  "vocabulary entries": "vocabulary entries",
+  "No vocabulary entries yet. Add some words first.": "No vocabulary entries yet. Add some words first."
+}

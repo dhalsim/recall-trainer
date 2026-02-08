@@ -1,0 +1,20 @@
+{
+  "Select your main language for the app": "Uygulama için ana dilinizi seçin",
+  "Select your target (learning) language": "Hedef (öğrenme) dilinizi seçin",
+  "Enter words I struggle with": "Zorlandığım kelimeleri gir",
+  "Take a test": "Test al",
+  "English": "İngilizce",
+  "Japanese": "Japonca",
+  "Turkish": "Türkçe",
+  "Continue": "Devam",
+  "Add vocabulary pairs (one per line, format: source | target)": "Kelime çiftleri ekleyin (satır başına bir tane, format: kaynak | hedef)",
+  "Start test": "Teste başla",
+  "Correct": "Doğru",
+  "Incorrect": "Yanlış",
+  "Round summary": "Tur özeti",
+  "Your answer": "Cevabınız",
+  "Correct answer": "Doğru cevap",
+  "Next round": "Sonraki tur",
+  "vocabulary entries": "kelime girişi",
+  "No vocabulary entries yet. Add some words first.": "Henüz kelime girişi yok. Önce bazı kelimeler ekleyin."
+}
