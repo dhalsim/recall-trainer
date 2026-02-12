@@ -27,6 +27,6 @@ export function setLocale(lang: AppLanguage): void {
   void i18next.changeLanguage(localeMap[lang]);
 }
 
-export function t(key: string): string {
-  return i18next.t(key);
+export function t(key: string, options?: Record<string, string | number>): string {
+  return options ? i18next.t(key, options) : i18next.t(key);
 }

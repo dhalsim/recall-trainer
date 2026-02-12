@@ -4,6 +4,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 import solid from 'vite-plugin-solid';
 
 export default defineConfig({
+  server: {
+    host: true,
+    port: process.env.PORT ? parseInt(process.env.PORT, 10) : 5273,
+  },
   plugins: [
     tailwindcss(),
     solid(),

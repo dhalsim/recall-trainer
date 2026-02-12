@@ -1,5 +1,11 @@
 import type { AppLanguage } from '../store';
 
+export const LANGUAGE_LABELS: Record<AppLanguage, string> = {
+  en: 'English',
+  ja: 'Japanese',
+  tr: 'Turkish',
+};
+
 /**
  * Supported language pairs per AGENTS.md: English ↔ Japanese, Turkish ↔ Japanese
  */

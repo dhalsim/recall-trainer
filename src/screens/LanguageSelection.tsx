@@ -1,15 +1,9 @@
 import { For } from 'solid-js';
 
 import { t } from '../i18n';
-import { VALID_TARGETS } from '../lib/language-pairs';
+import { LANGUAGE_LABELS, VALID_TARGETS } from '../lib/language-pairs';
 import type { AppLanguage } from '../store';
 import { store } from '../store';
-
-const LANGUAGE_LABELS: Record<AppLanguage, string> = {
-  en: 'English',
-  ja: 'Japanese',
-  tr: 'Turkish',
-};
 
 function getLabelKey(lang: AppLanguage): string {
   return LANGUAGE_LABELS[lang];

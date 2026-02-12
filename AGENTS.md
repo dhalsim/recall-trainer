@@ -71,8 +71,14 @@ This app is a **vocabulary recall trainer** focused on active recall and error-b
 
 * Global app state in `store.ts`
 * Persist state using LocalStorage
-* Introduce a `SETTINGS_VERSION` constant
-  * On version mismatch, reset or migrate stored state
+* **Versioning and migrations**
+  * `SETTINGS_VERSION` in `store.ts` is the current schema version (number).
+  * When the app loads state from LocalStorage, it checks `parsed.version`:
+    * If it matches `SETTINGS_VERSION`, state is normalized and used.
+    * If it is an **older** version (e.g. `1`), we run a **client-side migration** (e.g. `migrateV1ToV2(parsed)`), persist the migrated state back to LocalStorage, then use it. This upgrades existing users to the new shape without losing data.
+    * If it is missing or **newer** than expected, we fall back to `defaultState` (reset).
+  * Migration functions live in `store.ts` (e.g. `migrateV1ToV2`). Each takes the parsed old state and returns a full `AppState` at the new version. After migrating, we always `saveState(migrated)` so the client’s stored state is updated.
+  * When adding a new version (e.g. 3): bump `SETTINGS_VERSION`, add `migrateV2ToV3` (and keep `migrateV1ToV2` if you still support v1), and in `loadState` run the right migration(s) in order (e.g. v1 → v2 → v3) then persist.
 * All state access must be type-safe
 
 ### i18n
