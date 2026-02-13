@@ -88,6 +88,10 @@ interface AppStateV2 {
 
 export type AppScreen = 'mode_selection' | 'word_entry' | 'test';
 
+export const QUESTIONS_PER_SESSION_MIN = 1;
+export const QUESTIONS_PER_SESSION_MAX = 50;
+export const QUESTIONS_PER_SESSION_DEFAULT = 5;
+
 export interface AppState {
   version: number;
   mainLanguage: AppLanguage | null;
@@ -95,6 +99,7 @@ export interface AppState {
   languageSelectionComplete: boolean;
   screen: AppScreen;
   entries: VocabEntry[];
+  questionsPerSession: number;
 }
 
 const defaultState: AppState = {
@@ -104,6 +109,7 @@ const defaultState: AppState = {
   languageSelectionComplete: false,
   screen: 'mode_selection',
   entries: [],
+  questionsPerSession: QUESTIONS_PER_SESSION_DEFAULT,
 };
 
 function toSourceOrTarget(
@@ -159,6 +165,7 @@ function migrateV2ToV3(parsed: AppStateV2): AppState {
 
   return {
     version: SETTINGS_VERSION,
+    questionsPerSession: QUESTIONS_PER_SESSION_DEFAULT,
     mainLanguage: parsed.mainLanguage ?? null,
     targetLanguage: parsed.targetLanguage ?? null,
     languageSelectionComplete: parsed.languageSelectionComplete ?? false,
@@ -206,9 +213,10 @@ function loadState(): AppState {
 
     if (version < SETTINGS_VERSION) {
       const migrated = migrateToLatest(parsed);
-      saveState(migrated);
+      const merged = { ...defaultState, ...migrated, entries: migrated.entries ?? [] };
+      saveState(merged);
 
-      return migrated;
+      return merged;
     }
 
     const appState = parsed as unknown as AppState;
@@ -218,6 +226,13 @@ function loadState(): AppState {
       ...appState,
       version: SETTINGS_VERSION,
       entries: appState.entries ?? [],
+      questionsPerSession:
+        typeof appState.questionsPerSession === 'number'
+          ? Math.min(
+              QUESTIONS_PER_SESSION_MAX,
+              Math.max(QUESTIONS_PER_SESSION_MIN, appState.questionsPerSession),
+            )
+          : defaultState.questionsPerSession,
     };
   } catch (err) {
     console.error('[store] Failed to load state:', err);
@@ -356,6 +371,15 @@ function createStore() {
     }));
   };
 
+  const setQuestionsPerSession = (value: number): void => {
+    const clamped = Math.min(
+      QUESTIONS_PER_SESSION_MAX,
+      Math.max(QUESTIONS_PER_SESSION_MIN, Math.round(value)),
+    );
+
+    persist((prev) => ({ ...prev, questionsPerSession: clamped }));
+  };
+
   return {
     state,
     testSession,
@@ -372,6 +396,7 @@ function createStore() {
     clearEntries,
     recordAnswer,
     setEntryCorrect,
+    setQuestionsPerSession,
   };
 }
 

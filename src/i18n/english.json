@@ -39,5 +39,8 @@
   "Next Batch": "Next Batch",
   "1 vocabulary entry to practice.": "1 vocabulary entry to practice.",
   "{{count}} vocabulary entries to practice.": "{{count}} vocabulary entries to practice.",
-  "Hide mastered": "Hide mastered"
+  "Hide mastered": "Hide mastered",
+  "Settings": "Settings",
+  "Questions per session": "Questions per session",
+  "Close": "Close"
 }

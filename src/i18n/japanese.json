@@ -39,5 +39,8 @@
   "Next Batch": "次のグループ",
   "1 vocabulary entry to practice.": "練習する単語が 1 つあります。",
   "{{count}} vocabulary entries to practice.": "練習する単語が {{count}} つあります。",
-  "Hide mastered": "習得済みを隠す"
+  "Hide mastered": "習得済みを隠す",
+  "Settings": "設定",
+  "Questions per session": "1回のテストあたりの出題数",
+  "Close": "閉じる"
 }

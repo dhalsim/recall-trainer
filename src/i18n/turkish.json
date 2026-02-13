@@ -39,5 +39,8 @@
   "Next Batch": "Sonraki grup",
   "1 vocabulary entry to practice.": "1 kelime çifti pratik için hazır.",
   "{{count}} vocabulary entries to practice.": "{{count}} kelime çifti pratik için hazır.",
-  "Hide mastered": "Öğrenilenleri gizle"
+  "Hide mastered": "Öğrenilenleri gizle",
+  "Settings": "Ayarlar",
+  "Questions per session": "Oturum başına soru sayısı",
+  "Close": "Kapat"
 }

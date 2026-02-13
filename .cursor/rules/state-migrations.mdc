@@ -37,3 +37,23 @@ Global app state lives in `store.ts` and is persisted to LocalStorage. When pers
 
 5. **Unknown or future version**  
    If `parsed.version > SETTINGS_VERSION` or an unknown step in the loop, fall back to default state (and optionally clear or backup storage) instead of running migrations.
+
+---
+
+## Additive changes: default + spread
+
+To avoid a new migration function for every new optional field:
+
+1. **Single source of truth**  
+   Maintain a full `defaultState` (or `DEFAULT_SETTINGS`) that includes every current field. When adding a new optional setting, add it only there.
+
+2. **Merge with stored data on load**  
+   After running any structural migrations (see below), merge: `{ ...defaultState, ...parsed }`. Missing keys in stored data get the default; no new `migrateXtoY` needed for additive fields.
+
+3. **Optional inline fixes**  
+   When an old version needs a derived value (e.g. a new field that can’t be a literal default), you can do:  
+   `const migrated = { ...defaultState, ...parsed }; if (!migrated.newField) migrated.newField = deriveFrom(parsed); return migrated;`  
+   Prefer this only when the logic is trivial; otherwise use an explicit migration step.
+
+4. **When to use explicit migrations**  
+   Use `migrateVXtoVY` (and bump version) for **structural or breaking changes**: renamed keys, changed types, or reshaped data (e.g. flat → nested). Keep the one-migration-per-version-step rule for those. Additive optional fields stay in default + spread only.

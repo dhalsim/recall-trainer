@@ -4,8 +4,6 @@ import { t } from '../i18n';
 import type { TestSessionSnapshot, VocabEntry } from '../store';
 import { store } from '../store';
 
-const QUESTIONS_PER_ROUND = 5;
-
 type Direction = 'source_to_target' | 'target_to_source';
 type Phase = 'idle' | 'question' | 'round_summary' | 'finished';
 
@@ -33,6 +31,7 @@ export function TestMode() {
   let answerInputRef: HTMLInputElement | undefined;
 
   const entries = () => store.state().entries;
+  const questionsPerSession = () => store.state().questionsPerSession;
   const entriesToPractice = () => entries().filter((e) => !e.source.correct || !e.target.correct);
   const hasNoEntryToPractice = () => entriesToPractice().length === 0;
 
@@ -109,15 +108,16 @@ export function TestMode() {
 
     const totalQuestions = needSourceToTarget.length + needTargetToSource.length;
     setTotalQuestionsAtStart(totalQuestions);
-    setTotalBatchesAtStart(Math.ceil(totalQuestions / QUESTIONS_PER_ROUND) || 1);
+    setTotalBatchesAtStart(Math.ceil(totalQuestions / questionsPerSession()) || 1);
     setCurrentBatchIndex(1);
 
-    let firstBatch = needSourceToTarget.slice(0, QUESTIONS_PER_ROUND);
+    const perSession = questionsPerSession();
+    let firstBatch = needSourceToTarget.slice(0, perSession);
     let startDir: Direction = 'source_to_target';
 
     if (firstBatch.length === 0 && needTargetToSource.length > 0) {
       startDir = 'target_to_source';
-      firstBatch = needTargetToSource.slice(-QUESTIONS_PER_ROUND).reverse();
+      firstBatch = needTargetToSource.slice(-perSession).reverse();
     }
 
     if (firstBatch.length === 0) {
@@ -195,7 +195,7 @@ export function TestMode() {
     setDirection(nextDir);
 
     const list = nextDir === 'source_to_target' ? s2t : t2s;
-    const batch = list.slice(-QUESTIONS_PER_ROUND).reverse();
+    const batch = list.slice(-questionsPerSession()).reverse();
 
     if (batch.length === 0) {
       store.clearTestSession();
