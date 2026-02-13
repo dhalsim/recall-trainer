@@ -15,6 +15,7 @@ function App() {
     if (showLanguageSelection()) {
       return <LanguageSelection />;
     }
+
     const screen = store.state().screen;
     switch (screen) {
       case 'mode_selection':

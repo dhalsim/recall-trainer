@@ -17,6 +17,7 @@ export function WordEntry() {
   const mainLang = (): AppLanguage => store.state().mainLanguage ?? 'en';
   const targetLang = (): AppLanguage => store.state().targetLanguage ?? 'ja';
   const entries = () => store.state().entries;
+
   const visibleEntries = () =>
     hideMastered() ? entries().filter((e) => !(e.source.correct && e.target.correct)) : entries();
 

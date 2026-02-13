@@ -121,6 +121,7 @@ function toSourceOrTarget(
  */
 function migrateV1ToV2(parsed: AppStateV1): AppStateV2 {
   const correctDefault = false;
+
   const entries: VocabEntryV2Legacy[] = (parsed.entries ?? []).map((e) => {
     const correct = e.correct ?? correctDefault;
 
@@ -191,6 +192,7 @@ function migrateToLatest(parsed: { version?: number; [key: string]: unknown }): 
 function loadState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
+
     if (!raw) {
       return { ...defaultState };
     }
@@ -258,6 +260,7 @@ function createStore() {
     if (lang) {
       setLocale(lang);
     }
+
     persist((prev) => ({ ...prev, mainLanguage: lang }));
   };
 
@@ -287,6 +290,7 @@ function createStore() {
       source: toSourceOrTarget('source', sourceText.trim(), false, 0),
       target: toSourceOrTarget('target', targetText.trim(), false, 0),
     };
+
     persist((prev) => ({
       ...prev,
       entries: [...prev.entries, entry],
@@ -306,6 +310,7 @@ function createStore() {
 
   const recordAnswer = (id: string, wasCorrect: boolean, direction: QuizDirection): void => {
     const isSourceToTarget = direction === 'source_to_target';
+
     persist((prev) => ({
       ...prev,
       entries: prev.entries.map((e) => {

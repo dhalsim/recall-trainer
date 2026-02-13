@@ -57,8 +57,10 @@ export function TestMode() {
 
   const restoreSession = (snapshot: TestSessionSnapshot): void => {
     const entriesById = Object.fromEntries(store.state().entries.map((e) => [e.id, e]));
+
     const byIds = (ids: string[]) =>
       ids.map((id) => entriesById[id]).filter((e): e is VocabEntry => e != null);
+
     setDirection(snapshot.direction);
     setSourceToTarget(byIds(snapshot.sourceToTargetIds));
     setTargetToSource(byIds(snapshot.targetToSourceIds));
@@ -66,6 +68,7 @@ export function TestMode() {
     setCurrentIndex(snapshot.currentIndex);
     setTotalCorrect(snapshot.totalCorrect);
     setTotalIncorrect(snapshot.totalIncorrect);
+
     setRoundResults(
       snapshot.roundResults
         .map((r) => ({
@@ -75,6 +78,7 @@ export function TestMode() {
         }))
         .filter((r): r is RoundResult => r.entry != null),
     );
+
     setTotalQuestionsAtStart(snapshot.totalQuestionsAtStart ?? 0);
     setTotalBatchesAtStart(snapshot.totalBatchesAtStart ?? 1);
     setCurrentBatchIndex(snapshot.currentBatchIndex ?? 1);
@@ -84,6 +88,7 @@ export function TestMode() {
 
   onMount(() => {
     const snapshot = store.testSession();
+
     if (snapshot != null) {
       console.log('onMount snapshot', snapshot.phase);
       restoreSession(snapshot);
@@ -138,6 +143,7 @@ export function TestMode() {
     const questions = currentRoundQuestions();
     const idx = currentIndex();
     const entry = questions[idx];
+
     if (!entry) {
       return;
     }
@@ -185,6 +191,7 @@ export function TestMode() {
 
     const nextDir: Direction =
       direction() === 'source_to_target' ? 'target_to_source' : 'source_to_target';
+
     setDirection(nextDir);
 
     const list = nextDir === 'source_to_target' ? s2t : t2s;
@@ -213,12 +220,14 @@ export function TestMode() {
 
   const currentEntry = () => currentRoundQuestions()[currentIndex()];
   const isSourceToTarget = () => direction() === 'source_to_target';
+
   const promptText = () =>
     currentEntry()
       ? isSourceToTarget()
         ? currentEntry()!.source.text
         : currentEntry()!.target.text
       : '';
+
   const currentNum = () => currentIndex() + 1;
   const totalNum = () => currentRoundQuestions().length;
   const wordsLeft = () => sourceToTarget().length + targetToSource().length;

@@ -12,6 +12,7 @@ function getLabelKey(lang: AppLanguage): string {
 export function LanguageSelection() {
   const main = () => store.state().mainLanguage;
   const target = () => store.state().targetLanguage;
+
   const targetOptions = () => {
     const m = main();
 
