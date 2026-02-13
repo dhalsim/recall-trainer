@@ -71,33 +71,13 @@ This app is a **vocabulary recall trainer** focused on active recall and error-b
 
 * Global app state in `store.ts`
 * Persist state using LocalStorage
-* **Versioning and migrations**
-  * `SETTINGS_VERSION` in `store.ts` is the current schema version (number).
-  * When the app loads state from LocalStorage, it checks `parsed.version`:
-    * If it matches `SETTINGS_VERSION`, state is normalized and used.
-    * If it is an **older** version (e.g. `1`), we run a **client-side migration** (e.g. `migrateV1ToV2(parsed)`), persist the migrated state back to LocalStorage, then use it. This upgrades existing users to the new shape without losing data.
-    * If it is missing or **newer** than expected, we fall back to `defaultState` (reset).
-  * Migration functions live in `store.ts` (e.g. `migrateV1ToV2`). Each takes the parsed old state and returns a full `AppState` at the new version. After migrating, we always `saveState(migrated)` so the client’s stored state is updated.
-  * When adding a new version (e.g. 3): bump `SETTINGS_VERSION`, add `migrateV2ToV3` (and keep `migrateV1ToV2` if you still support v1), and in `loadState` run the right migration(s) in order (e.g. v1 → v2 → v3) then persist.
+* **Versioning and migrations:** use a schema version (e.g. `SETTINGS_VERSION` in `store.ts`). When loading, if stored version is older, run client-side migrations then persist; if missing or newer, fall back to default state. For the exact migration pattern (one step per version, loop until current, keep all migration functions), see **`.cursor/rules/state-migrations.mdc`**.
 * All state access must be type-safe
 
 ### i18n
 * Use **i18n-js**
-* Provide:
-  * `english.json`
-  * `turkish.json`
-* **Important rule**:
-  * All translation keys must be **full English sentences**
-  * In `english.json`, keys and values must be identical
-    Example:
-
-    ```json
-    {
-      "Select your main language for the app": "Select your main language for the app"
-    }
-    ```
-* This is intentional to make adding new languages easier
-* Create an internal guideline or agent rule enforcing this pattern
+* Provide locale files (e.g. `english.json`, `turkish.json`) under `src/i18n/`
+* For translation key format (full English sentences, keys = values in `english.json`), see **`.cursor/rules/i18n.mdc`**
 
 ---
 

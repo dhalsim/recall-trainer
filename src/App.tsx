@@ -7,6 +7,7 @@ import { store } from './store';
 function App() {
   const showLanguageSelection = () => {
     const s = store.state();
+
     return !s.languageSelectionComplete || s.mainLanguage === null || s.targetLanguage === null;
   };
 

@@ -33,8 +33,7 @@ export function TestMode() {
   let answerInputRef: HTMLInputElement | undefined;
 
   const entries = () => store.state().entries;
-  const entriesToPractice = () =>
-    entries().filter((e) => !e.correctSourceToTarget || !e.correctTargetToSource);
+  const entriesToPractice = () => entries().filter((e) => !e.source.correct || !e.target.correct);
   const hasNoEntryToPractice = () => entriesToPractice().length === 0;
 
   const buildSnapshot = (phase: 'question' | 'round_summary'): TestSessionSnapshot => ({
@@ -68,11 +67,13 @@ export function TestMode() {
     setTotalCorrect(snapshot.totalCorrect);
     setTotalIncorrect(snapshot.totalIncorrect);
     setRoundResults(
-      snapshot.roundResults.map((r) => ({
-        entry: entriesById[r.entryId],
-        correct: r.correct,
-        userAnswer: r.userAnswer,
-      })).filter((r): r is RoundResult => r.entry != null),
+      snapshot.roundResults
+        .map((r) => ({
+          entry: entriesById[r.entryId],
+          correct: r.correct,
+          userAnswer: r.userAnswer,
+        }))
+        .filter((r): r is RoundResult => r.entry != null),
     );
     setTotalQuestionsAtStart(snapshot.totalQuestionsAtStart ?? 0);
     setTotalBatchesAtStart(snapshot.totalBatchesAtStart ?? 1);
@@ -87,14 +88,13 @@ export function TestMode() {
       console.log('onMount snapshot', snapshot.phase);
       restoreSession(snapshot);
       console.log('onMount snapshot restored', snapshot.phase);
-
     }
   });
 
   const startTest = () => {
     const all = entries();
-    const needSourceToTarget = all.filter((e) => !e.correctSourceToTarget);
-    const needTargetToSource = all.filter((e) => !e.correctTargetToSource);
+    const needSourceToTarget = all.filter((e) => !e.source.correct);
+    const needTargetToSource = all.filter((e) => !e.target.correct);
     setSourceToTarget([...needSourceToTarget]);
     setTargetToSource([...needTargetToSource]);
     setDirection('source_to_target');
@@ -109,25 +109,25 @@ export function TestMode() {
 
     let firstBatch = needSourceToTarget.slice(0, QUESTIONS_PER_ROUND);
     let startDir: Direction = 'source_to_target';
-    
+
     if (firstBatch.length === 0 && needTargetToSource.length > 0) {
       startDir = 'target_to_source';
       firstBatch = needTargetToSource.slice(-QUESTIONS_PER_ROUND).reverse();
     }
-    
+
     if (firstBatch.length === 0) {
       store.clearTestSession();
       setPhase('finished');
-      
+
       return;
     }
-    
+
     setDirection(startDir);
     setCurrentRoundQuestions(firstBatch);
     setCurrentIndex(0);
     setPhase('question');
     setUserInput('');
-    
+
     store.setTestSession(buildSnapshot('question'));
   };
 
@@ -138,11 +138,13 @@ export function TestMode() {
     const questions = currentRoundQuestions();
     const idx = currentIndex();
     const entry = questions[idx];
-    if (!entry) return;
+    if (!entry) {
+      return;
+    }
 
     const answer = userInput().trim();
     const isSourceToTarget = direction() === 'source_to_target';
-    const correctAnswer = isSourceToTarget ? entry.target : entry.source;
+    const correctAnswer = isSourceToTarget ? entry.target.text : entry.source.text;
     const correct = answer === correctAnswer;
 
     setRoundResults((prev) => [...prev, { entry, correct, userAnswer: answer }]);
@@ -162,7 +164,7 @@ export function TestMode() {
       store.setTestSession(buildSnapshot('question'));
     } else {
       setPhase('round_summary');
-      console.log('phase set to', phase())
+      console.log('phase set to', phase());
 
       store.setTestSession(buildSnapshot('round_summary'));
     }
@@ -177,10 +179,12 @@ export function TestMode() {
     if (s2t.length === 0 && t2s.length === 0) {
       store.clearTestSession();
       setPhase('finished');
+
       return;
     }
 
-    const nextDir: Direction = direction() === 'source_to_target' ? 'target_to_source' : 'source_to_target';
+    const nextDir: Direction =
+      direction() === 'source_to_target' ? 'target_to_source' : 'source_to_target';
     setDirection(nextDir);
 
     const list = nextDir === 'source_to_target' ? s2t : t2s;
@@ -189,6 +193,7 @@ export function TestMode() {
     if (batch.length === 0) {
       store.clearTestSession();
       setPhase('finished');
+
       return;
     }
 
@@ -208,7 +213,12 @@ export function TestMode() {
 
   const currentEntry = () => currentRoundQuestions()[currentIndex()];
   const isSourceToTarget = () => direction() === 'source_to_target';
-  const promptText = () => (currentEntry() ? (isSourceToTarget() ? currentEntry()!.source : currentEntry()!.target) : '');
+  const promptText = () =>
+    currentEntry()
+      ? isSourceToTarget()
+        ? currentEntry()!.source.text
+        : currentEntry()!.target.text
+      : '';
   const currentNum = () => currentIndex() + 1;
   const totalNum = () => currentRoundQuestions().length;
   const wordsLeft = () => sourceToTarget().length + targetToSource().length;
@@ -247,7 +257,9 @@ export function TestMode() {
               ← {t('Back')}
             </button>
             <h1 class="text-2xl font-bold text-slate-900">Recall Trainer</h1>
-            <p class="text-slate-600">{t('All entries are correct. Add more words or practice again later.')}</p>
+            <p class="text-slate-600">
+              {t('All entries are correct. Add more words or practice again later.')}
+            </p>
             <button
               type="button"
               onClick={() => store.setScreen('word_entry')}
@@ -271,7 +283,9 @@ export function TestMode() {
             <p class="text-slate-600">
               {entriesToPractice().length === 1
                 ? t('1 vocabulary entry to practice.')
-                : t('{{count}} vocabulary entries to practice.', { count: entriesToPractice().length })}{' '}
+                : t('{{count}} vocabulary entries to practice.', {
+                    count: entriesToPractice().length,
+                  })}{' '}
               {t('Start test')}?
             </p>
             <button
@@ -285,10 +299,7 @@ export function TestMode() {
         </Match>
 
         <Match when={phase() === 'question'}>
-          <Show
-            when={currentEntry()}
-            fallback={null}
-          >
+          <Show when={currentEntry()} fallback={null}>
             <div class="mx-auto max-w-md space-y-6">
               <button
                 type="button"
@@ -311,7 +322,10 @@ export function TestMode() {
                 <p>
                   {t('Answering batch #{{n}}', { n: currentBatchIndex() })}
                   {' — '}
-                  {t('Question {{current}} of {{total}}', { current: currentNum(), total: totalNum() })}
+                  {t('Question {{current}} of {{total}}', {
+                    current: currentNum(),
+                    total: totalNum(),
+                  })}
                   {isSourceToTarget() ? ' (Source → Target)' : ' (Target → Source)'}
                 </p>
               </div>
@@ -351,12 +365,13 @@ export function TestMode() {
 
         <Match when={phase() === 'round_summary'}>
           {(() => {
-            console.log('round_summary Match rendering', roundResults())
+            console.log('round_summary Match rendering', roundResults());
 
             const results = roundResults();
             const incorrect = results.filter((r) => !r.correct);
             const correct = results.filter((r) => r.correct);
             const isSourceToTargetRound = direction() === 'source_to_target';
+
             return (
               <div class="mx-auto max-w-md space-y-6">
                 <h1 class="text-2xl font-bold text-slate-900">{t('Round summary')}</h1>
@@ -372,13 +387,14 @@ export function TestMode() {
                         {(r) => (
                           <div class="rounded-lg border border-slate-200 bg-white p-3 text-sm">
                             <p class="font-medium text-slate-800">
-                              {isSourceToTargetRound ? r.entry.source : r.entry.target} →
+                              {isSourceToTargetRound ? r.entry.source.text : r.entry.target.text} →
                             </p>
                             <p class="text-slate-600">
                               {t('Your answer')}: {r.userAnswer}
                             </p>
                             <p class="text-success-500">
-                              {t('Correct answer')}: {isSourceToTargetRound ? r.entry.target : r.entry.source}
+                              {t('Correct answer')}:{' '}
+                              {isSourceToTargetRound ? r.entry.target.text : r.entry.source.text}
                             </p>
                             <p class="mt-1 text-slate-400 italic">Explanation placeholder</p>
                           </div>
@@ -395,8 +411,8 @@ export function TestMode() {
                       <For each={correct}>
                         {(r) => (
                           <div class="rounded border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                            {isSourceToTargetRound ? r.entry.source : r.entry.target} →{' '}
-                            {isSourceToTargetRound ? r.entry.target : r.entry.source}
+                            {isSourceToTargetRound ? r.entry.source.text : r.entry.target.text} →{' '}
+                            {isSourceToTargetRound ? r.entry.target.text : r.entry.source.text}
                           </div>
                         )}
                       </For>

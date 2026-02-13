@@ -14,6 +14,7 @@ export function LanguageSelection() {
   const target = () => store.state().targetLanguage;
   const targetOptions = () => {
     const m = main();
+
     return m ? VALID_TARGETS[m] : [];
   };
 

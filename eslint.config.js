@@ -1,4 +1,5 @@
 import eslint from '@eslint/js';
+import stylistic from '@stylistic/eslint-plugin';
 import importPlugin from 'eslint-plugin-import';
 import prettier from 'eslint-plugin-prettier';
 import solid from 'eslint-plugin-solid';
@@ -28,6 +29,7 @@ export default [
       },
     },
     plugins: {
+      '@stylistic': stylistic,
       '@typescript-eslint': tseslint.plugin,
       import: importPlugin,
       prettier,
@@ -70,6 +72,16 @@ export default [
         },
       ],
       '@typescript-eslint/no-explicit-any': 'off',
+      '@stylistic/padding-line-between-statements': [
+        'error',
+        { blankLine: 'always', prev: '*', next: 'return' },
+        {
+          blankLine: 'always',
+          prev: 'multiline-block-like',
+          next: 'multiline-block-like',
+        },
+        { blankLine: 'always', prev: 'expression', next: 'if' },
+      ],
     },
   },
 ];

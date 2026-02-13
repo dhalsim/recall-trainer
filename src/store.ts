@@ -2,13 +2,14 @@ import { createSignal } from 'solid-js';
 
 import { setLocale } from './i18n';
 
-export const SETTINGS_VERSION = 2;
+export const SETTINGS_VERSION = 3;
 
 /** Generate a unique ID. Falls back to Math.random when crypto.randomUUID is unavailable (non-secure context). */
 function generateId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
+
   return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 11);
 }
 
@@ -34,28 +35,27 @@ export interface TestSessionSnapshot {
   currentBatchIndex: number;
 }
 
-export interface VocabEntry {
-  id: string;
-  source: string;
-  target: string;
-  /** True when answered correctly in source → target direction (this round). */
-  correctSourceToTarget: boolean;
-  /** True when answered correctly in target → source direction (this round). */
-  correctTargetToSource: boolean;
-  /** Number of times answered incorrectly (statistics). */
+/** Per-side (source or target) text, correctness, and error count. */
+export interface SourceOrTarget {
+  type: 'source' | 'target';
+  text: string;
+  correct: boolean;
   errorCount: number;
 }
 
-/** Proposed future shape (per-side correct/errorCount). Not used yet; see TODO.md. */
-interface _VocabEntryV2 {
+export interface VocabEntry {
   id: string;
   source: SourceOrTarget;
   target: SourceOrTarget;
 }
 
-interface SourceOrTarget {
-  text: string;
-  correct: boolean;
+/** V2 shape: flat source/target strings and shared correct flags. Used for migration only. */
+interface VocabEntryV2Legacy {
+  id: string;
+  source: string;
+  target: string;
+  correctSourceToTarget: boolean;
+  correctTargetToSource: boolean;
   errorCount: number;
 }
 
@@ -75,6 +75,15 @@ interface AppStateV1 {
   languageSelectionComplete?: boolean;
   screen?: AppScreen;
   entries?: VocabEntryV1[];
+}
+
+interface AppStateV2 {
+  version: 2;
+  mainLanguage?: AppLanguage | null;
+  targetLanguage?: AppLanguage | null;
+  languageSelectionComplete?: boolean;
+  screen?: AppScreen;
+  entries?: VocabEntryV2Legacy[];
 }
 
 export type AppScreen = 'mode_selection' | 'word_entry' | 'test';
@@ -97,33 +106,56 @@ const defaultState: AppState = {
   entries: [],
 };
 
-function normalizeEntry(
-  e: (Partial<VocabEntry> & { id: string; source: string; target: string }) | VocabEntryV1,
-): VocabEntry {
-  const hasV1 = 'correct' in e && e.correct !== undefined;
-  const correct = hasV1 ? ((e as VocabEntryV1).correct ?? false) : false;
+function toSourceOrTarget(
+  type: 'source' | 'target',
+  text: string,
+  correct: boolean,
+  errorCount: number,
+): SourceOrTarget {
+  return { type, text, correct, errorCount };
+}
+
+/**
+ * Migrate persisted state from version 1 to version 2 (per-direction correct flags).
+ * Keep this so very old state (v1) can still be upgraded.
+ */
+function migrateV1ToV2(parsed: AppStateV1): AppStateV2 {
+  const correctDefault = false;
+  const entries: VocabEntryV2Legacy[] = (parsed.entries ?? []).map((e) => {
+    const correct = e.correct ?? correctDefault;
+
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      correctSourceToTarget: correct,
+      correctTargetToSource: correct,
+      errorCount: e.errorCount ?? 0,
+    };
+  });
+
   return {
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    correctSourceToTarget: (e as Partial<VocabEntry>).correctSourceToTarget ?? correct,
-    correctTargetToSource: (e as Partial<VocabEntry>).correctTargetToSource ?? correct,
-    errorCount: e.errorCount ?? 0,
+    version: 2,
+    mainLanguage: parsed.mainLanguage ?? null,
+    targetLanguage: parsed.targetLanguage ?? null,
+    languageSelectionComplete: parsed.languageSelectionComplete ?? false,
+    screen: parsed.screen ?? 'mode_selection',
+    entries,
   };
 }
 
 /**
- * Client-side migration: upgrade persisted state from version 1 to version 2.
- * Used in loadState() when parsed.version === 1; the result is persisted back to LocalStorage
- * so the client's stored state is updated and future loads use v2.
+ * Migrate persisted state from version 2 to version 3 (per-side source/target).
+ * V2 had a single errorCount; we put it on the source side to avoid double-counting.
+ * Keep this so state from v2 can still be upgraded.
  */
-function migrateV1ToV2(parsed: AppStateV1): AppState {
-  const entries: VocabEntry[] = (parsed.entries ?? []).map((e) =>
-    normalizeEntry({
-      ...e,
-      correct: e.correct ?? false,
-    }),
-  );
+function migrateV2ToV3(parsed: AppStateV2): AppState {
+  const entries: VocabEntry[] = (parsed.entries ?? []).map((e) => ({
+    id: e.id,
+    source: toSourceOrTarget('source', e.source, e.correctSourceToTarget, e.errorCount ?? 0),
+    target: toSourceOrTarget('target', e.target, e.correctTargetToSource, 0),
+  }));
+
   return {
     version: SETTINGS_VERSION,
     mainLanguage: parsed.mainLanguage ?? null,
@@ -134,6 +166,28 @@ function migrateV1ToV2(parsed: AppStateV1): AppState {
   };
 }
 
+/** Run migrations one by one until state reaches SETTINGS_VERSION. */
+function migrateToLatest(parsed: { version?: number; [key: string]: unknown }): AppState {
+  let state: AppStateV1 | AppStateV2 | AppState = parsed as AppStateV1;
+  const version = state.version ?? 1;
+
+  if (version > SETTINGS_VERSION) {
+    return { ...defaultState };
+  }
+
+  while (state.version !== SETTINGS_VERSION) {
+    if (state.version === 1) {
+      state = migrateV1ToV2(state as AppStateV1);
+    } else if (state.version === 2) {
+      state = migrateV2ToV3(state as AppStateV2);
+    } else {
+      return { ...defaultState };
+    }
+  }
+
+  return state as AppState;
+}
+
 function loadState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -142,28 +196,30 @@ function loadState(): AppState {
     }
 
     const parsed = JSON.parse(raw) as { version?: number; [key: string]: unknown };
+    const version = parsed.version ?? 1;
 
-    if (parsed.version === 1) {
-      const migrated = migrateV1ToV2(parsed as AppStateV1);
-      saveState(migrated);
-      return migrated;
-    }
-
-    if (parsed.version !== SETTINGS_VERSION) {
+    if (version > SETTINGS_VERSION) {
       return { ...defaultState };
     }
 
+    if (version < SETTINGS_VERSION) {
+      const migrated = migrateToLatest(parsed);
+      saveState(migrated);
+
+      return migrated;
+    }
+
     const appState = parsed as unknown as AppState;
-    const entries = (appState.entries ?? []).map(normalizeEntry);
 
     return {
       ...defaultState,
       ...appState,
       version: SETTINGS_VERSION,
-      entries,
+      entries: appState.entries ?? [],
     };
   } catch (err) {
     console.error('[store] Failed to load state:', err);
+
     return { ...defaultState };
   }
 }
@@ -189,6 +245,7 @@ function createStore() {
     setState((prev) => {
       const next = updater(prev);
       saveState(next);
+
       return next;
     });
   };
@@ -224,14 +281,11 @@ function createStore() {
     persist((prev) => ({ ...prev, entries }));
   };
 
-  const addEntry = (source: string, target: string): void => {
+  const addEntry = (sourceText: string, targetText: string): void => {
     const entry: VocabEntry = {
       id: generateId(),
-      source: source.trim(),
-      target: target.trim(),
-      correctSourceToTarget: false,
-      correctTargetToSource: false,
-      errorCount: 0,
+      source: toSourceOrTarget('source', sourceText.trim(), false, 0),
+      target: toSourceOrTarget('target', targetText.trim(), false, 0),
     };
     persist((prev) => ({
       ...prev,
@@ -254,29 +308,46 @@ function createStore() {
     const isSourceToTarget = direction === 'source_to_target';
     persist((prev) => ({
       ...prev,
-      entries: prev.entries.map((e) =>
-        e.id !== id
-          ? e
-          : {
-              ...e,
-              correctSourceToTarget: isSourceToTarget ? wasCorrect : e.correctSourceToTarget,
-              correctTargetToSource: !isSourceToTarget ? wasCorrect : e.correctTargetToSource,
-              errorCount: wasCorrect ? e.errorCount : e.errorCount + 1,
+      entries: prev.entries.map((e) => {
+        if (e.id !== id) {
+          return e;
+        }
+
+        if (isSourceToTarget) {
+          return {
+            ...e,
+            source: {
+              ...e.source,
+              correct: wasCorrect,
+              errorCount: wasCorrect ? e.source.errorCount : e.source.errorCount + 1,
             },
-      ),
+          };
+        }
+
+        return {
+          ...e,
+          target: {
+            ...e.target,
+            correct: wasCorrect,
+            errorCount: wasCorrect ? e.target.errorCount : e.target.errorCount + 1,
+          },
+        };
+      }),
     }));
   };
 
   const setEntryCorrect = (id: string, correct: boolean): void => {
     persist((prev) => ({
       ...prev,
-      entries: prev.entries.map((e) => {
-        const errorCount = correct ? 0 : e.errorCount;
-
-        return e.id !== id
+      entries: prev.entries.map((e) =>
+        e.id !== id
           ? e
-          : { ...e, correctSourceToTarget: correct, correctTargetToSource: correct, errorCount };
-      }),
+          : {
+              ...e,
+              source: { ...e.source, correct, errorCount: correct ? 0 : e.source.errorCount },
+              target: { ...e.target, correct, errorCount: correct ? 0 : e.target.errorCount },
+            },
+      ),
     }));
   };
 

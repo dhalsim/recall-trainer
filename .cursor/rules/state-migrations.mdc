@@ -1,0 +1,39 @@
+---
+description: State/settings versioning and migrations — one step per version, loop until current
+globs: **/store*.ts,**/state*.ts
+alwaysApply: false
+---
+
+# State migrations (versioned persistence)
+
+Global app state lives in `store.ts` and is persisted to LocalStorage. When persisting with a **version number**:
+
+1. **One migration per version step**  
+   Provide a function for each adjacent pair: `migrateV1ToV2`, `migrateV2ToV3`, etc.  
+   Do **not** skip versions (e.g. no direct `migrateV1ToV3`). This keeps very old state upgradable and keeps each migration small and testable.
+
+2. **Keep every migration function**  
+   Do not remove old migrations when adding a new version. Users or installs may still have state at an older version.  
+   Example: when introducing `SETTINGS_VERSION = 4`, add `migrateV3ToV4` and keep `migrateV1ToV2` and `migrateV2ToV3`.
+
+3. **Run migrations in a loop until current**  
+   In your load function, run migrations step by step until the state’s version equals the current `SETTINGS_VERSION`:
+
+   ```ts
+   function migrateToLatest(parsed: { version?: number }): AppState {
+     let state = parsed;
+     while (state.version !== SETTINGS_VERSION) {
+       if (state.version === 1) state = migrateV1ToV2(state);
+       else if (state.version === 2) state = migrateV2ToV3(state);
+       // else if (state.version === 3) state = migrateV3ToV4(state);
+       else return getDefaultState();
+     }
+     return state;
+   }
+   ```
+
+4. **After migrating, persist and return**  
+   When `parsed.version < SETTINGS_VERSION`, call `migrateToLatest(parsed)`, then `saveState(migrated)` so the client’s stored state is updated, and return the migrated state.
+
+5. **Unknown or future version**  
+   If `parsed.version > SETTINGS_VERSION` or an unknown step in the loop, fall back to default state (and optionally clear or backup storage) instead of running migrations.

@@ -2,7 +2,7 @@ import { createSignal, For } from 'solid-js';
 
 import { t } from '../i18n';
 import { LANGUAGE_LABELS } from '../lib/language-pairs';
-import type { AppLanguage } from '../store';
+import type { AppLanguage, VocabEntry } from '../store';
 import { store } from '../store';
 
 export function WordEntry() {
@@ -18,7 +18,7 @@ export function WordEntry() {
   const targetLang = (): AppLanguage => store.state().targetLanguage ?? 'ja';
   const entries = () => store.state().entries;
   const visibleEntries = () =>
-    hideMastered() ? entries().filter((e) => !(e.correctSourceToTarget && e.correctTargetToSource)) : entries();
+    hideMastered() ? entries().filter((e) => !(e.source.correct && e.target.correct)) : entries();
 
   const sourceLabel = () => t(LANGUAGE_LABELS[mainLang()]);
   const targetLabel = () => t(LANGUAGE_LABELS[targetLang()]);
@@ -35,15 +35,17 @@ export function WordEntry() {
       store.addEntry(s, tgt);
     } catch (err) {
       console.error('[WordEntry] addEntry failed:', err);
+
       return false;
     }
 
     setSource('');
     setTarget('');
-    
+
     if (sourceRef) {
       sourceRef.value = '';
     }
+
     if (targetRef) {
       targetRef.value = '';
     }
@@ -56,26 +58,36 @@ export function WordEntry() {
   const handleBack = () => store.goToModeSelection();
 
   const handleSourceKeyDown = (e: KeyboardEvent) => {
-    if (e.keyCode === 229) return;
-    if (e.key !== 'Enter') return;
+    if (e.keyCode === 229) {
+      return;
+    }
+
+    if (e.key !== 'Enter') {
+      return;
+    }
 
     e.preventDefault();
-    
+
     if (!saveEntry()) {
       targetRef?.focus();
     }
   };
 
   const handleTargetKeyDown = (e: KeyboardEvent) => {
-    if (e.keyCode === 229) return;
-    if (e.key !== 'Enter') return;
+    if (e.keyCode === 229) {
+      return;
+    }
+
+    if (e.key !== 'Enter') {
+      return;
+    }
 
     e.preventDefault();
-    
+
     if (!saveEntry()) {
       const s = (sourceRef?.value ?? '').trim();
       const tgt = (targetRef?.value ?? '').trim();
-      
+
       if (!s) {
         sourceRef?.focus();
       } else if (s || tgt) {
@@ -98,9 +110,8 @@ export function WordEntry() {
 
   const handleRemove = (id: string) => store.removeEntry(id);
 
-  const isMastered = (entry: { correctSourceToTarget: boolean; correctTargetToSource: boolean }) =>
-    entry.correctSourceToTarget && entry.correctTargetToSource;
-  
+  const isMastered = (entry: VocabEntry) => entry.source.correct && entry.target.correct;
+
   const toggleCorrect = (id: string, currentlyMastered: boolean) =>
     store.setEntryCorrect(id, !currentlyMastered);
 
@@ -173,19 +184,34 @@ export function WordEntry() {
             <table class="w-full border-collapse">
               <thead>
                 <tr class="bg-slate-50">
-                  <th scope="col" class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <th
+                    scope="col"
+                    class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500"
+                  >
                     {sourceLabel()}
                   </th>
-                  <th scope="col" class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <th
+                    scope="col"
+                    class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500"
+                  >
                     {targetLabel()}
                   </th>
-                  <th scope="col" class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <th
+                    scope="col"
+                    class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500"
+                  >
                     {t('Mastered')}
                   </th>
-                  <th scope="col" class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <th
+                    scope="col"
+                    class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500"
+                  >
                     {t('Error count')}
                   </th>
-                  <th scope="col" class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <th
+                    scope="col"
+                    class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500"
+                  >
                     {t('Delete')}
                   </th>
                 </tr>
@@ -194,17 +220,20 @@ export function WordEntry() {
                 <For each={visibleEntries()}>
                   {(entry) => (
                     <tr class="border-t border-slate-200 bg-white">
-                      <td class="px-3 py-2 text-center text-slate-800">{entry.source}</td>
-                      <td class="px-3 py-2 text-center text-slate-800">{entry.target}</td>
+                      <td class="px-3 py-2 text-center text-slate-800">{entry.source.text}</td>
+                      <td class="px-3 py-2 text-center text-slate-800">{entry.target.text}</td>
                       <td class="flex justify-center px-3 py-2">
                         <button
                           type="button"
                           onClick={() => toggleCorrect(entry.id, isMastered(entry))}
-                          aria-label={isMastered(entry) ? 'Mark as not mastered' : 'Mark as mastered'}
+                          aria-label={
+                            isMastered(entry) ? 'Mark as not mastered' : 'Mark as mastered'
+                          }
                           class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
                           classList={{
                             'border-success-500 bg-success-500 text-white': isMastered(entry),
-                            'border-slate-300 bg-white text-slate-400 hover:border-slate-400': !isMastered(entry),
+                            'border-slate-300 bg-white text-slate-400 hover:border-slate-400':
+                              !isMastered(entry),
                           }}
                         >
                           <span
@@ -221,7 +250,7 @@ export function WordEntry() {
                           class="text-xs font-medium tabular-nums text-slate-500"
                           title={t('Error count')}
                         >
-                          {entry.errorCount}×
+                          {entry.source.errorCount + entry.target.errorCount}×
                         </span>
                       </td>
                       <td class="flex justify-center px-3 py-2">
