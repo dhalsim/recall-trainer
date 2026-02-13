@@ -87,7 +87,7 @@ Check AGENTS.md for the requirements.
 - [x] **Fix return-to-idle:** Prevent test from showing “Start test?” again mid-session (audit phase transitions; optionally persist test session in store).
 - [x] **Parameterized batch size:** Add a constant or store setting `questionsPerSession` (default 5); use it when building the batch for “Take a test”.
 - [x] **Settings menu:** Add a settings menu (opens as a dialog) allowing the user to configure parameters such as `questionsPerSession`.
-- [ ] **Immediate feedback:** After each answer, show a short “Correct” / “Incorrect — correct answer: X” screen (or inline), then auto-advance or “Next” to the next question.
+- [x] **Immediate feedback:** After each answer, show a short “Correct” / “Incorrect — correct answer: X” screen (or inline), then auto-advance or “Next” to the next question.
 - [ ] **Fixed batch for session:** When user clicks “Take a test”, select up to N entries once; run all S→T questions for that batch, then all T→S for that batch; then re-filter to “still incorrect in either direction” and repeat S→T and T→S until batch is fully correct or max rounds.
 - [ ] **Final summary:** After session ends, show total correct/incorrect and “Go back” (already partially there; ensure it matches the new flow).
 - [x] **Store refactor to per-side `source`/`target` objects** (SETTINGS_VERSION 3, migration from v1/v2, update WordEntry + TestMode).

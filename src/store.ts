@@ -21,7 +21,7 @@ export type QuizDirection = 'source_to_target' | 'target_to_source';
 
 /** In-memory only (not persisted). Used to restore test UI after remount. */
 export interface TestSessionSnapshot {
-  phase: 'question' | 'round_summary';
+  phase: 'question' | 'answer_feedback' | 'round_summary';
   direction: QuizDirection;
   sourceToTargetIds: string[];
   targetToSourceIds: string[];

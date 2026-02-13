@@ -5,7 +5,7 @@ import type { TestSessionSnapshot, VocabEntry } from '../store';
 import { store } from '../store';
 
 type Direction = 'source_to_target' | 'target_to_source';
-type Phase = 'idle' | 'question' | 'round_summary' | 'finished';
+type Phase = 'idle' | 'question' | 'answer_feedback' | 'round_summary' | 'finished';
 
 interface RoundResult {
   entry: VocabEntry;
@@ -35,7 +35,9 @@ export function TestMode() {
   const entriesToPractice = () => entries().filter((e) => !e.source.correct || !e.target.correct);
   const hasNoEntryToPractice = () => entriesToPractice().length === 0;
 
-  const buildSnapshot = (phase: 'question' | 'round_summary'): TestSessionSnapshot => ({
+  const buildSnapshot = (
+    phase: 'question' | 'answer_feedback' | 'round_summary',
+  ): TestSessionSnapshot => ({
     phase,
     direction: direction(),
     sourceToTargetIds: sourceToTarget().map((e) => e.id),
@@ -164,18 +166,23 @@ export function TestMode() {
     }
 
     setUserInput('');
+    setPhase('answer_feedback');
+    store.setTestSession(buildSnapshot('answer_feedback'));
+    store.recordAnswer(entry.id, correct, direction());
+  };
+
+  const goToNextAfterFeedback = () => {
+    const questions = currentRoundQuestions();
+    const idx = currentIndex();
 
     if (idx + 1 < questions.length) {
       setCurrentIndex(idx + 1);
+      setPhase('question');
       store.setTestSession(buildSnapshot('question'));
     } else {
       setPhase('round_summary');
-      console.log('phase set to', phase());
-
       store.setTestSession(buildSnapshot('round_summary'));
     }
-
-    store.recordAnswer(entry.id, correct, direction());
   };
 
   const nextRound = () => {
@@ -372,9 +379,61 @@ export function TestMode() {
           </Show>
         </Match>
 
+        <Match when={phase() === 'answer_feedback'}>
+          {(() => {
+            const results = roundResults();
+            const last = results.length > 0 ? results[results.length - 1] : null;
+
+            if (!last) {
+              return null;
+            }
+
+            const isSourceToTargetRound = direction() === 'source_to_target';
+            const correctAnswerText = isSourceToTargetRound
+              ? last.entry.target.text
+              : last.entry.source.text;
+
+            return (
+              <div class="mx-auto max-w-md space-y-6">
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  class="text-sm font-medium text-blue-600 hover:text-blue-800 focus:outline-none focus:underline"
+                >
+                  ← {t('Back')}
+                </button>
+                <div
+                  class="rounded-lg border-2 p-4"
+                  classList={{
+                    'border-success-300 bg-success-50': last.correct,
+                    'border-error-300 bg-error-50': !last.correct,
+                  }}
+                >
+                  {last.correct ? (
+                    <p class="text-lg font-semibold text-success-800">{t('Correct')}</p>
+                  ) : (
+                    <div class="space-y-1">
+                      <p class="text-lg font-semibold text-error-800">{t('Incorrect')}</p>
+                      <p class="text-sm text-slate-700">
+                        {t('Correct answer')}: {correctAnswerText}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={goToNextAfterFeedback}
+                  class="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  {t('Next')}
+                </button>
+              </div>
+            );
+          })()}
+        </Match>
+
         <Match when={phase() === 'round_summary'}>
           {(() => {
-            console.log('round_summary Match rendering', roundResults());
 
             const results = roundResults();
             const incorrect = results.filter((r) => !r.correct);
