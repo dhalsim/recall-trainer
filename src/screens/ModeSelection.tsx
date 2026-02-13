@@ -42,10 +42,7 @@ export function ModeSelection() {
         </button>
       </div>
 
-      <SettingsDialog
-        open={showSettings()}
-        onClose={() => setShowSettings(false)}
-      />
+      <SettingsDialog open={showSettings()} onClose={() => setShowSettings(false)} />
 
       <div class="space-y-4">
         <p class="text-slate-600">What would you like to do?</p>

@@ -1,8 +1,14 @@
-import { createEffect, createSignal, For, Match, onMount, Show, Switch } from 'solid-js';
+import { createEffect, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
 
 import { t } from '../i18n';
 import type { TestSessionSnapshot, VocabEntry } from '../store';
-import { store } from '../store';
+import {
+  getEntriesWithDueSide,
+  isSourceDue,
+  isTargetDue,
+  MAX_SESSION_ROUNDS,
+  store,
+} from '../store';
 
 type Direction = 'source_to_target' | 'target_to_source';
 type Phase = 'idle' | 'question' | 'answer_feedback' | 'round_summary' | 'finished';
@@ -27,12 +33,13 @@ export function TestMode() {
   const [totalQuestionsAtStart, setTotalQuestionsAtStart] = createSignal(0);
   const [totalBatchesAtStart, setTotalBatchesAtStart] = createSignal(0);
   const [currentBatchIndex, setCurrentBatchIndex] = createSignal(1);
+  const [sessionBatchIds, setSessionBatchIds] = createSignal<string[]>([]);
 
   let answerInputRef: HTMLInputElement | undefined;
 
   const entries = () => store.state().entries;
   const questionsPerSession = () => store.state().questionsPerSession;
-  const entriesToPractice = () => entries().filter((e) => !e.source.correct || !e.target.correct);
+  const entriesToPractice = () => getEntriesWithDueSide(entries());
   const hasNoEntryToPractice = () => entriesToPractice().length === 0;
 
   const buildSnapshot = (
@@ -54,6 +61,7 @@ export function TestMode() {
     totalQuestionsAtStart: totalQuestionsAtStart(),
     totalBatchesAtStart: totalBatchesAtStart(),
     currentBatchIndex: currentBatchIndex(),
+    sessionBatchIds: sessionBatchIds(),
   });
 
   const restoreSession = (snapshot: TestSessionSnapshot): void => {
@@ -83,6 +91,13 @@ export function TestMode() {
     setTotalQuestionsAtStart(snapshot.totalQuestionsAtStart ?? 0);
     setTotalBatchesAtStart(snapshot.totalBatchesAtStart ?? 1);
     setCurrentBatchIndex(snapshot.currentBatchIndex ?? 1);
+
+    const batchIds =
+      (snapshot.sessionBatchIds?.length ?? 0) > 0
+        ? snapshot.sessionBatchIds
+        : [...new Set([...snapshot.sourceToTargetIds, ...snapshot.targetToSourceIds])];
+
+    setSessionBatchIds(batchIds ?? []);
     setPhase(snapshot.phase);
     store.clearTestSession();
   };
@@ -97,44 +112,80 @@ export function TestMode() {
     }
   });
 
-  const startTest = () => {
-    const all = entries();
-    const needSourceToTarget = all.filter((e) => !e.source.correct);
-    const needTargetToSource = all.filter((e) => !e.target.correct);
-    setSourceToTarget([...needSourceToTarget]);
-    setTargetToSource([...needTargetToSource]);
-    setDirection('source_to_target');
-    setTotalCorrect(0);
-    setTotalIncorrect(0);
-    setRoundResults([]);
-
-    const totalQuestions = needSourceToTarget.length + needTargetToSource.length;
-    setTotalQuestionsAtStart(totalQuestions);
-    setTotalBatchesAtStart(Math.ceil(totalQuestions / questionsPerSession()) || 1);
-    setCurrentBatchIndex(1);
-
-    const perSession = questionsPerSession();
-    let firstBatch = needSourceToTarget.slice(0, perSession);
-    let startDir: Direction = 'source_to_target';
-
-    if (firstBatch.length === 0 && needTargetToSource.length > 0) {
-      startDir = 'target_to_source';
-      firstBatch = needTargetToSource.slice(-perSession).reverse();
+  createEffect(() => {
+    if (phase() !== 'answer_feedback') {
+      return;
     }
 
-    if (firstBatch.length === 0) {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        goToNextAfterFeedback();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    onCleanup(() => window.removeEventListener('keydown', onKeyDown));
+  });
+
+  createEffect(() => {
+    if (phase() !== 'round_summary') {
+      return;
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        nextRound();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    onCleanup(() => window.removeEventListener('keydown', onKeyDown));
+  });
+
+  const startTest = () => {
+    const toPractice = entriesToPractice();
+    const n = questionsPerSession();
+    const sessionBatch = toPractice.slice(0, n);
+
+    if (sessionBatch.length === 0) {
       store.clearTestSession();
       setPhase('finished');
 
       return;
     }
 
-    setDirection(startDir);
-    setCurrentRoundQuestions(firstBatch);
+    const ids = sessionBatch.map((e) => e.id);
+    setSessionBatchIds(ids);
+    setTotalCorrect(0);
+    setTotalIncorrect(0);
+    setRoundResults([]);
+    setTotalQuestionsAtStart(sessionBatch.length);
+    setTotalBatchesAtStart(MAX_SESSION_ROUNDS);
+    setCurrentBatchIndex(1);
+
+    const needS2T = sessionBatch.filter(isSourceDue).reverse();
+    const needT2S = sessionBatch.filter(isTargetDue);
+    setSourceToTarget([...needS2T]);
+    setTargetToSource([...needT2S]);
+
+    if (needS2T.length > 0) {
+      setDirection('source_to_target');
+      setCurrentRoundQuestions(needS2T);
+    } else if (needT2S.length > 0) {
+      setDirection('target_to_source');
+      setCurrentRoundQuestions([...needT2S].reverse());
+    } else {
+      store.clearTestSession();
+      setPhase('finished');
+
+      return;
+    }
+
     setCurrentIndex(0);
     setPhase('question');
     setUserInput('');
-
     store.setTestSession(buildSnapshot('question'));
   };
 
@@ -185,36 +236,66 @@ export function TestMode() {
     }
   };
 
+  const refilterBatchFromStore = (): { needS2T: VocabEntry[]; needT2S: VocabEntry[] } => {
+    const entriesById = Object.fromEntries(entries().map((e) => [e.id, e]));
+
+    const batchEntries = sessionBatchIds()
+      .map((id) => entriesById[id])
+      .filter((e): e is VocabEntry => e != null);
+
+    const needS2T = batchEntries.filter(isSourceDue).reverse();
+    const needT2S = batchEntries.filter(isTargetDue);
+
+    return { needS2T, needT2S };
+  };
+
   const nextRound = () => {
-    const s2t = sourceToTarget();
-    const t2s = targetToSource();
+    if (direction() === 'source_to_target') {
+      const t2s = targetToSource();
 
-    if (s2t.length === 0 && t2s.length === 0) {
+      if (t2s.length > 0) {
+        setDirection('target_to_source');
+        setCurrentRoundQuestions([...t2s].reverse());
+        setCurrentIndex(0);
+        setRoundResults([]);
+        setPhase('question');
+        setUserInput('');
+        store.setTestSession(buildSnapshot('question'));
+
+        return;
+      }
+    }
+
+    const { needS2T, needT2S } = refilterBatchFromStore();
+
+    if (needS2T.length === 0 && needT2S.length === 0) {
       store.clearTestSession();
       setPhase('finished');
 
       return;
     }
 
-    const nextDir: Direction =
-      direction() === 'source_to_target' ? 'target_to_source' : 'source_to_target';
-
-    setDirection(nextDir);
-
-    const list = nextDir === 'source_to_target' ? s2t : t2s;
-    const batch = list.slice(-questionsPerSession()).reverse();
-
-    if (batch.length === 0) {
+    if (currentBatchIndex() >= MAX_SESSION_ROUNDS) {
       store.clearTestSession();
       setPhase('finished');
 
       return;
     }
 
-    setCurrentRoundQuestions(batch);
+    setCurrentBatchIndex((i) => i + 1);
+    setSourceToTarget([...needS2T]);
+    setTargetToSource([...needT2S]);
+
+    if (needS2T.length > 0) {
+      setDirection('source_to_target');
+      setCurrentRoundQuestions(needS2T);
+    } else {
+      setDirection('target_to_source');
+      setCurrentRoundQuestions(needT2S);
+    }
+
     setCurrentIndex(0);
     setRoundResults([]);
-    setCurrentBatchIndex((i) => i + 1);
     setPhase('question');
     setUserInput('');
     store.setTestSession(buildSnapshot('question'));
@@ -274,7 +355,7 @@ export function TestMode() {
             </button>
             <h1 class="text-2xl font-bold text-slate-900">Recall Trainer</h1>
             <p class="text-slate-600">
-              {t('All entries are correct. Add more words or practice again later.')}
+              {t('No reviews due today. Add more words or practice again later.')}
             </p>
             <button
               type="button"
@@ -326,18 +407,16 @@ export function TestMode() {
               </button>
               <div class="space-y-1 text-sm text-slate-500">
                 <p>
-                  {t('Batch {{current}} of {{total}}', {
+                  {t('Round {{current}} of {{max}}', {
                     current: currentBatchIndex(),
-                    total: totalBatchesAtStart(),
+                    max: totalBatchesAtStart(),
                   })}
                   {' · '}
-                  {t('{{total}} words total', { total: totalQuestionsAtStart() })}
+                  {t('{{total}} words in session', { total: totalQuestionsAtStart() })}
                   {' · '}
                   {t('{{count}} left', { count: wordsLeft() })}
                 </p>
                 <p>
-                  {t('Answering batch #{{n}}', { n: currentBatchIndex() })}
-                  {' — '}
                   {t('Question {{current}} of {{total}}', {
                     current: currentNum(),
                     total: totalNum(),
@@ -384,57 +463,60 @@ export function TestMode() {
             const results = roundResults();
             const last = results.length > 0 ? results[results.length - 1] : null;
 
-            if (!last) {
-              return null;
-            }
-
-            const isSourceToTargetRound = direction() === 'source_to_target';
-            const correctAnswerText = isSourceToTargetRound
-              ? last.entry.target.text
-              : last.entry.source.text;
-
             return (
-              <div class="mx-auto max-w-md space-y-6">
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  class="text-sm font-medium text-blue-600 hover:text-blue-800 focus:outline-none focus:underline"
-                >
-                  ← {t('Back')}
-                </button>
-                <div
-                  class="rounded-lg border-2 p-4"
-                  classList={{
-                    'border-success-300 bg-success-50': last.correct,
-                    'border-error-300 bg-error-50': !last.correct,
-                  }}
-                >
-                  {last.correct ? (
-                    <p class="text-lg font-semibold text-success-800">{t('Correct')}</p>
-                  ) : (
-                    <div class="space-y-1">
-                      <p class="text-lg font-semibold text-error-800">{t('Incorrect')}</p>
-                      <p class="text-sm text-slate-700">
-                        {t('Correct answer')}: {correctAnswerText}
-                      </p>
+              <Show when={last}>
+                {(getItem) => {
+                  const item = getItem();
+                  const isSourceToTargetRound = direction() === 'source_to_target';
+
+                  const correctAnswerText = isSourceToTargetRound
+                    ? item.entry.target.text
+                    : item.entry.source.text;
+
+                  return (
+                    <div class="mx-auto max-w-md space-y-6">
+                      <button
+                        type="button"
+                        onClick={handleBack}
+                        class="text-sm font-medium text-blue-600 hover:text-blue-800 focus:outline-none focus:underline"
+                      >
+                        ← {t('Back')}
+                      </button>
+                      <div
+                        class="rounded-lg border-2 p-4"
+                        classList={{
+                          'border-success-300 bg-success-50': item.correct,
+                          'border-error-300 bg-error-50': !item.correct,
+                        }}
+                      >
+                        {item.correct ? (
+                          <p class="text-lg font-semibold text-success-800">{t('Correct')}</p>
+                        ) : (
+                          <div class="space-y-1">
+                            <p class="text-lg font-semibold text-error-800">{t('Incorrect')}</p>
+                            <p class="text-sm text-slate-700">
+                              {t('Correct answer')}: {correctAnswerText}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={goToNextAfterFeedback}
+                        class="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                      >
+                        {t('Next')}
+                      </button>
                     </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={goToNextAfterFeedback}
-                  class="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                >
-                  {t('Next')}
-                </button>
-              </div>
+                  );
+                }}
+              </Show>
             );
           })()}
         </Match>
 
         <Match when={phase() === 'round_summary'}>
           {(() => {
-
             const results = roundResults();
             const incorrect = results.filter((r) => !r.correct);
             const correct = results.filter((r) => r.correct);
@@ -518,12 +600,12 @@ export function TestMode() {
             >
               {totalIncorrect() === 0
                 ? t('All answers correct in both directions. Well done!')
-                : t('Review the words you got wrong and try again.')}
+                : t("You had wrong answers. Don't forget to review them later.")}
             </p>
             <button
               type="button"
               onClick={handleBack}
-              class="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              class="w-full rounded-lg border-2 border-slate-200 bg-white px-4 py-3 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               ← {t('Back')}
             </button>

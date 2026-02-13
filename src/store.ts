@@ -1,8 +1,10 @@
 import { createSignal } from 'solid-js';
 
 import { setLocale } from './i18n';
+import { setSimulationTime } from './utils/clock';
+import { addDaysFromToday, endOfToday, realStartOfToday, startOfToday } from './utils/date';
 
-export const SETTINGS_VERSION = 3;
+export const SETTINGS_VERSION = 4;
 
 /** Generate a unique ID. Falls back to Math.random when crypto.randomUUID is unavailable (non-secure context). */
 function generateId(): string {
@@ -33,14 +35,20 @@ export interface TestSessionSnapshot {
   totalQuestionsAtStart: number;
   totalBatchesAtStart: number;
   currentBatchIndex: number;
+  /** Fixed batch of entry IDs for this session (selected once at start). */
+  sessionBatchIds: string[];
 }
 
-/** Per-side (source or target) text, correctness, and error count. */
+/** Per-side (source or target) text, correctness, error count, and review schedule. */
 export interface SourceOrTarget {
   type: 'source' | 'target';
   text: string;
   correct: boolean;
   errorCount: number;
+  /** Timestamp of start of the review day (local midnight). */
+  nextReviewAt: number;
+  /** 0..REVIEW_MAX_LEVEL, index into REVIEW_INTERVAL_DAYS. */
+  level: number;
 }
 
 export interface VocabEntry {
@@ -86,11 +94,68 @@ interface AppStateV2 {
   entries?: VocabEntryV2Legacy[];
 }
 
+/** V3 shape: per-side source/target but without nextReviewAt/level. Used for migration only. */
+interface SourceOrTargetV3 {
+  type: 'source' | 'target';
+  text: string;
+  correct: boolean;
+  errorCount: number;
+}
+
+interface VocabEntryV3 {
+  id: string;
+  source: SourceOrTargetV3;
+  target: SourceOrTargetV3;
+}
+
+interface AppStateV3 {
+  version: 3;
+  mainLanguage?: AppLanguage | null;
+  targetLanguage?: AppLanguage | null;
+  languageSelectionComplete?: boolean;
+  screen?: AppScreen;
+  entries?: VocabEntryV3[];
+  questionsPerSession?: number;
+}
+
 export type AppScreen = 'mode_selection' | 'word_entry' | 'test';
 
 export const QUESTIONS_PER_SESSION_MIN = 1;
 export const QUESTIONS_PER_SESSION_MAX = 50;
 export const QUESTIONS_PER_SESSION_DEFAULT = 5;
+
+/** Max rounds per session (S→T + T→S) before forcing session end. */
+export const MAX_SESSION_ROUNDS = 10;
+
+/** Fibonacci intervals (days) for spaced repetition: level i → next review in REVIEW_INTERVAL_DAYS[i] days. */
+export const REVIEW_INTERVAL_DAYS = [0, 1, 1, 2, 3, 5, 8, 13] as const;
+
+export const REVIEW_MAX_LEVEL = REVIEW_INTERVAL_DAYS.length - 1;
+
+/** True if the source side (Source→Target) is due for review today. */
+export function isSourceDue(entry: VocabEntry): boolean {
+  return entry.source.nextReviewAt <= endOfToday();
+}
+
+/** True if the target side (Target→Source) is due for review today. */
+export function isTargetDue(entry: VocabEntry): boolean {
+  return entry.target.nextReviewAt <= endOfToday();
+}
+
+/** Entries that have at least one side due for review today. */
+export function getEntriesWithDueSide(entries: VocabEntry[]): VocabEntry[] {
+  return entries.filter((e) => isSourceDue(e) || isTargetDue(e));
+}
+
+/** Entries whose source side is due (Source→Target direction). */
+export function getDueSourceToTarget(entries: VocabEntry[]): VocabEntry[] {
+  return entries.filter(isSourceDue);
+}
+
+/** Entries whose target side is due (Target→Source direction). */
+export function getDueTargetToSource(entries: VocabEntry[]): VocabEntry[] {
+  return entries.filter(isTargetDue);
+}
 
 export interface AppState {
   version: number;
@@ -100,6 +165,10 @@ export interface AppState {
   screen: AppScreen;
   entries: VocabEntry[];
   questionsPerSession: number;
+  /** When true, date utils use simulationDate instead of real time. */
+  simulationMode: boolean;
+  /** Start-of-day timestamp for the simulated "today". */
+  simulationDate: number | null;
 }
 
 const defaultState: AppState = {
@@ -110,6 +179,8 @@ const defaultState: AppState = {
   screen: 'mode_selection',
   entries: [],
   questionsPerSession: QUESTIONS_PER_SESSION_DEFAULT,
+  simulationMode: false,
+  simulationDate: null,
 };
 
 function toSourceOrTarget(
@@ -117,8 +188,10 @@ function toSourceOrTarget(
   text: string,
   correct: boolean,
   errorCount: number,
+  nextReviewAt: number = startOfToday(),
+  level: number = 0,
 ): SourceOrTarget {
-  return { type, text, correct, errorCount };
+  return { type, text, correct, errorCount, nextReviewAt, level };
 }
 
 /**
@@ -154,18 +227,27 @@ function migrateV1ToV2(parsed: AppStateV1): AppStateV2 {
 /**
  * Migrate persisted state from version 2 to version 3 (per-side source/target).
  * V2 had a single errorCount; we put it on the source side to avoid double-counting.
- * Keep this so state from v2 can still be upgraded.
+ * Output is V3 shape (no nextReviewAt/level). Keep this so state from v2 can still be upgraded.
  */
-function migrateV2ToV3(parsed: AppStateV2): AppState {
-  const entries: VocabEntry[] = (parsed.entries ?? []).map((e) => ({
+function migrateV2ToV3(parsed: AppStateV2): AppStateV3 {
+  const entries: VocabEntryV3[] = (parsed.entries ?? []).map((e) => ({
     id: e.id,
-    source: toSourceOrTarget('source', e.source, e.correctSourceToTarget, e.errorCount ?? 0),
-    target: toSourceOrTarget('target', e.target, e.correctTargetToSource, 0),
+    source: {
+      type: 'source' as const,
+      text: e.source,
+      correct: e.correctSourceToTarget,
+      errorCount: e.errorCount ?? 0,
+    },
+    target: {
+      type: 'target' as const,
+      text: e.target,
+      correct: e.correctTargetToSource,
+      errorCount: 0,
+    },
   }));
 
   return {
-    version: SETTINGS_VERSION,
-    questionsPerSession: QUESTIONS_PER_SESSION_DEFAULT,
+    version: 3,
     mainLanguage: parsed.mainLanguage ?? null,
     targetLanguage: parsed.targetLanguage ?? null,
     languageSelectionComplete: parsed.languageSelectionComplete ?? false,
@@ -174,9 +256,49 @@ function migrateV2ToV3(parsed: AppStateV2): AppState {
   };
 }
 
+/**
+ * Migrate persisted state from version 3 to version 4 (add nextReviewAt and level per side).
+ * Existing entries become due immediately (level 0, nextReviewAt = start of today).
+ */
+function migrateV3ToV4(parsed: AppStateV3): AppState {
+  const now = startOfToday();
+
+  const entries: VocabEntry[] = (parsed.entries ?? []).map((e) => ({
+    id: e.id,
+    source: {
+      ...e.source,
+      nextReviewAt: now,
+      level: 0,
+    },
+    target: {
+      ...e.target,
+      nextReviewAt: now,
+      level: 0,
+    },
+  }));
+
+  return {
+    version: SETTINGS_VERSION,
+    mainLanguage: parsed.mainLanguage ?? null,
+    targetLanguage: parsed.targetLanguage ?? null,
+    languageSelectionComplete: parsed.languageSelectionComplete ?? false,
+    screen: parsed.screen ?? 'mode_selection',
+    entries,
+    questionsPerSession:
+      typeof parsed.questionsPerSession === 'number'
+        ? Math.min(
+            QUESTIONS_PER_SESSION_MAX,
+            Math.max(QUESTIONS_PER_SESSION_MIN, parsed.questionsPerSession),
+          )
+        : QUESTIONS_PER_SESSION_DEFAULT,
+    simulationMode: false,
+    simulationDate: null,
+  };
+}
+
 /** Run migrations one by one until state reaches SETTINGS_VERSION. */
 function migrateToLatest(parsed: { version?: number; [key: string]: unknown }): AppState {
-  let state: AppStateV1 | AppStateV2 | AppState = parsed as AppStateV1;
+  let state: AppStateV1 | AppStateV2 | AppStateV3 | AppState = parsed as AppStateV1;
   const version = state.version ?? 1;
 
   if (version > SETTINGS_VERSION) {
@@ -188,6 +310,8 @@ function migrateToLatest(parsed: { version?: number; [key: string]: unknown }): 
       state = migrateV1ToV2(state as AppStateV1);
     } else if (state.version === 2) {
       state = migrateV2ToV3(state as AppStateV2);
+    } else if (state.version === 3) {
+      state = migrateV3ToV4(state as AppStateV3);
     } else {
       return { ...defaultState };
     }
@@ -196,36 +320,67 @@ function migrateToLatest(parsed: { version?: number; [key: string]: unknown }): 
   return state as AppState;
 }
 
+function applyClockFromState(s: AppState): void {
+  if (s.simulationMode && s.simulationDate != null) {
+    setSimulationTime(s.simulationDate);
+  } else {
+    setSimulationTime(null);
+  }
+}
+
 function loadState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
 
     if (!raw) {
-      return { ...defaultState };
+      const state = { ...defaultState };
+      applyClockFromState(state);
+
+      return state;
     }
 
     const parsed = JSON.parse(raw) as { version?: number; [key: string]: unknown };
     const version = parsed.version ?? 1;
 
     if (version > SETTINGS_VERSION) {
-      return { ...defaultState };
+      const state = { ...defaultState };
+      applyClockFromState(state);
+
+      return state;
     }
 
     if (version < SETTINGS_VERSION) {
       const migrated = migrateToLatest(parsed);
       const merged = { ...defaultState, ...migrated, entries: migrated.entries ?? [] };
       saveState(merged);
+      applyClockFromState(merged);
 
       return merged;
     }
 
     const appState = parsed as unknown as AppState;
+    const rawEntries = appState.entries ?? [];
+    const now = startOfToday();
 
-    return {
+    const entries: VocabEntry[] = rawEntries.map((e) => ({
+      ...e,
+      source: {
+        ...e.source,
+        nextReviewAt: typeof e.source.nextReviewAt === 'number' ? e.source.nextReviewAt : now,
+        level: typeof e.source.level === 'number' ? e.source.level : 0,
+      },
+      target: {
+        ...e.target,
+        nextReviewAt: typeof e.target.nextReviewAt === 'number' ? e.target.nextReviewAt : now,
+        level: typeof e.target.level === 'number' ? e.target.level : 0,
+      },
+    }));
+
+    const state = {
       ...defaultState,
       ...appState,
       version: SETTINGS_VERSION,
-      entries: appState.entries ?? [],
+      entries,
       questionsPerSession:
         typeof appState.questionsPerSession === 'number'
           ? Math.min(
@@ -233,9 +388,16 @@ function loadState(): AppState {
               Math.max(QUESTIONS_PER_SESSION_MIN, appState.questionsPerSession),
             )
           : defaultState.questionsPerSession,
+      simulationMode: appState.simulationMode ?? false,
+      simulationDate: appState.simulationDate ?? null,
     };
+
+    applyClockFromState(state);
+
+    return state;
   } catch (err) {
     console.error('[store] Failed to load state:', err);
+    setSimulationTime(null);
 
     return { ...defaultState };
   }
@@ -300,10 +462,12 @@ function createStore() {
   };
 
   const addEntry = (sourceText: string, targetText: string): void => {
+    const now = startOfToday();
+
     const entry: VocabEntry = {
       id: generateId(),
-      source: toSourceOrTarget('source', sourceText.trim(), false, 0),
-      target: toSourceOrTarget('target', targetText.trim(), false, 0),
+      source: toSourceOrTarget('source', sourceText.trim(), false, 0, now, 0),
+      target: toSourceOrTarget('target', targetText.trim(), false, 0, now, 0),
     };
 
     persist((prev) => ({
@@ -316,6 +480,28 @@ function createStore() {
     persist((prev) => ({
       ...prev,
       entries: prev.entries.filter((e) => e.id !== id),
+    }));
+  };
+
+  const updateEntry = (id: string, sourceText: string, targetText: string): void => {
+    const s = sourceText.trim();
+    const t = targetText.trim();
+
+    if (!s || !t) {
+      return;
+    }
+
+    persist((prev) => ({
+      ...prev,
+      entries: prev.entries.map((e) =>
+        e.id !== id
+          ? e
+          : {
+              ...e,
+              source: { ...e.source, text: s },
+              target: { ...e.target, text: t },
+            },
+      ),
     }));
   };
 
@@ -334,15 +520,25 @@ function createStore() {
         }
 
         if (isSourceToTarget) {
+          const nextLevel = wasCorrect ? Math.min(e.source.level + 1, REVIEW_MAX_LEVEL) : 0;
+
+          const intervalDays = REVIEW_INTERVAL_DAYS[nextLevel];
+
           return {
             ...e,
             source: {
               ...e.source,
               correct: wasCorrect,
               errorCount: wasCorrect ? e.source.errorCount : e.source.errorCount + 1,
+              level: nextLevel,
+              nextReviewAt: addDaysFromToday(intervalDays),
             },
           };
         }
+
+        const nextLevel = wasCorrect ? Math.min(e.target.level + 1, REVIEW_MAX_LEVEL) : 0;
+
+        const intervalDays = REVIEW_INTERVAL_DAYS[nextLevel];
 
         return {
           ...e,
@@ -350,6 +546,8 @@ function createStore() {
             ...e.target,
             correct: wasCorrect,
             errorCount: wasCorrect ? e.target.errorCount : e.target.errorCount + 1,
+            level: nextLevel,
+            nextReviewAt: addDaysFromToday(intervalDays),
           },
         };
       }),
@@ -380,6 +578,37 @@ function createStore() {
     persist((prev) => ({ ...prev, questionsPerSession: clamped }));
   };
 
+  const setSimulationMode = (enabled: boolean): void => {
+    if (enabled) {
+      const now = realStartOfToday();
+      setSimulationTime(now);
+
+      persist((prev) => ({
+        ...prev,
+        simulationMode: true,
+        simulationDate: now,
+      }));
+    } else {
+      setSimulationTime(null);
+
+      persist((prev) => ({
+        ...prev,
+        simulationMode: false,
+        simulationDate: null,
+      }));
+    }
+  };
+
+  const advanceSimulationDay = (): void => {
+    const nextDay = addDaysFromToday(1);
+    setSimulationTime(nextDay);
+
+    persist((prev) => ({
+      ...prev,
+      simulationDate: nextDay,
+    }));
+  };
+
   return {
     state,
     testSession,
@@ -393,10 +622,13 @@ function createStore() {
     setEntries,
     addEntry,
     removeEntry,
+    updateEntry,
     clearEntries,
     recordAnswer,
     setEntryCorrect,
     setQuestionsPerSession,
+    setSimulationMode,
+    advanceSimulationDay,
   };
 }
 

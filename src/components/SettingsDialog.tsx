@@ -14,9 +14,8 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog(props: SettingsDialogProps) {
-  const [localQuestions, setLocalQuestions] = createSignal(
-    store.state().questionsPerSession,
-  );
+  const [localQuestions, setLocalQuestions] = createSignal(store.state().questionsPerSession);
+  const simulationMode = () => store.state().simulationMode;
 
   const syncFromStore = () => setLocalQuestions(store.state().questionsPerSession);
 
@@ -39,26 +38,17 @@ export function SettingsDialog(props: SettingsDialogProps) {
           }
         }}
       >
-        <div
-          class="fixed inset-0 bg-slate-900/50"
-          aria-hidden="true"
-        />
+        <div class="fixed inset-0 bg-slate-900/50" aria-hidden="true" />
         <div
           class="relative z-10 w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <h2
-            id="settings-title"
-            class="text-lg font-semibold text-slate-900"
-          >
+          <h2 id="settings-title" class="text-lg font-semibold text-slate-900">
             {t('Settings')}
           </h2>
           <div class="mt-4 space-y-4">
             <div>
-              <label
-                for="questions-per-session"
-                class="block text-sm font-medium text-slate-700"
-              >
+              <label for="questions-per-session" class="block text-sm font-medium text-slate-700">
                 {t('Questions per session')}
               </label>
               <input
@@ -69,11 +59,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 value={localQuestions()}
                 onInput={(e) => {
                   const v = e.currentTarget.valueAsNumber;
+
                   if (!Number.isNaN(v)) {
                     const clamped = Math.min(
                       QUESTIONS_PER_SESSION_MAX,
                       Math.max(QUESTIONS_PER_SESSION_MIN, Math.round(v)),
                     );
+
                     setLocalQuestions(clamped);
                     store.setQuestionsPerSession(clamped);
                   }
@@ -85,11 +77,37 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 {QUESTIONS_PER_SESSION_DEFAULT})
               </p>
             </div>
+            <div class="border-t border-slate-200 pt-4">
+              <p class="text-sm font-medium text-slate-700">{t('Simulation mode')}</p>
+              <p class="mt-0.5 text-xs text-slate-500">
+                {t('Use a mock date for testing reviews. Advance the day to see due items change.')}
+              </p>
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <label class="inline-flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={simulationMode()}
+                    onInput={(e) => store.setSimulationMode(e.currentTarget.checked)}
+                    class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span class="text-sm text-slate-700">{t('Simulation mode')}</span>
+                </label>
+                <Show when={simulationMode()}>
+                  <button
+                    type="button"
+                    onClick={() => store.advanceSimulationDay()}
+                    class="rounded-lg bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-800 transition-colors hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                  >
+                    {t('Advance day')}
+                  </button>
+                </Show>
+              </div>
+            </div>
           </div>
           <div class="mt-6 flex justify-end">
             <button
               type="button"
-              onClick={props.onClose}
+              onClick={() => props.onClose()}
               class="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               {t('Close')}

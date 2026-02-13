@@ -1,4 +1,4 @@
-import { createSignal, For } from 'solid-js';
+import { createSignal, For, onMount } from 'solid-js';
 
 import { t } from '../i18n';
 import { LANGUAGE_LABELS } from '../lib/language-pairs';
@@ -10,9 +10,15 @@ export function WordEntry() {
   const [target, setTarget] = createSignal('');
   const [error, setError] = createSignal(false);
   const [hideMastered, setHideMastered] = createSignal(false);
+  /** When set, form is in edit mode; save updates this entry. When empty, save creates a new entry. */
+  const [editingEntryId, setEditingEntryId] = createSignal<string | null>(null);
 
   let sourceRef: HTMLInputElement | undefined;
   let targetRef: HTMLInputElement | undefined;
+
+  onMount(() => {
+    requestAnimationFrame(() => sourceRef?.focus());
+  });
 
   const mainLang = (): AppLanguage => store.state().mainLanguage ?? 'en';
   const targetLang = (): AppLanguage => store.state().targetLanguage ?? 'ja';
@@ -32,16 +38,23 @@ export function WordEntry() {
       return false;
     }
 
+    const id = editingEntryId();
+
     try {
-      store.addEntry(s, tgt);
+      if (id) {
+        store.updateEntry(id, s, tgt);
+      } else {
+        store.addEntry(s, tgt);
+      }
     } catch (err) {
-      console.error('[WordEntry] addEntry failed:', err);
+      console.error('[WordEntry] save entry failed:', err);
 
       return false;
     }
 
     setSource('');
     setTarget('');
+    setEditingEntryId(null);
 
     if (sourceRef) {
       sourceRef.value = '';
@@ -95,7 +108,7 @@ export function WordEntry() {
         setError(true);
       }
     } else {
-      sourceRef?.focus();
+      requestAnimationFrame(() => sourceRef?.focus());
     }
   };
 
@@ -110,6 +123,16 @@ export function WordEntry() {
   };
 
   const handleRemove = (id: string) => store.removeEntry(id);
+
+  const handleEdit = (entry: VocabEntry) => {
+    setEditingEntryId(entry.id);
+    setSource(entry.source.text);
+    setTarget(entry.target.text);
+    setError(false);
+    requestAnimationFrame(() => {
+      sourceRef?.focus();
+    });
+  };
 
   const isMastered = (entry: VocabEntry) => entry.source.correct && entry.target.correct;
 
@@ -213,6 +236,12 @@ export function WordEntry() {
                     scope="col"
                     class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500"
                   >
+                    {t('Edit')}
+                  </th>
+                  <th
+                    scope="col"
+                    class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500"
+                  >
                     {t('Delete')}
                   </th>
                 </tr>
@@ -223,10 +252,11 @@ export function WordEntry() {
                     <tr class="border-t border-slate-200 bg-white">
                       <td class="px-3 py-2 text-center text-slate-800">{entry.source.text}</td>
                       <td class="px-3 py-2 text-center text-slate-800">{entry.target.text}</td>
-                      <td class="flex justify-center px-3 py-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleCorrect(entry.id, isMastered(entry))}
+                      <td class="px-3 py-2">
+                        <div class="flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() => toggleCorrect(entry.id, isMastered(entry))}
                           aria-label={
                             isMastered(entry) ? 'Mark as not mastered' : 'Mark as mastered'
                           }
@@ -245,6 +275,7 @@ export function WordEntry() {
                             ✓
                           </span>
                         </button>
+                        </div>
                       </td>
                       <td class="px-3 py-2 text-center">
                         <span
@@ -254,7 +285,17 @@ export function WordEntry() {
                           {entry.source.errorCount + entry.target.errorCount}×
                         </span>
                       </td>
-                      <td class="flex justify-center px-3 py-2">
+                      <td class="px-3 py-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(entry)}
+                          aria-label={t('Edit')}
+                          class="rounded px-2 py-1 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          ✎
+                        </button>
+                      </td>
+                      <td class="px-3 py-2 text-center">
                         <button
                           type="button"
                           onClick={() => handleRemove(entry.id)}
