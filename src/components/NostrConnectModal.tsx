@@ -1,8 +1,21 @@
-import { Show } from 'solid-js';
+import { createSignal, Show } from 'solid-js';
 
 import { t } from '../i18n';
 
-import { NostrConnectAuth } from './NostrConnectAuth.tsx';
+import { NostrConnectAuth } from './NostrConnectAuth';
+
+export type ConnectStep =
+  | 'choice'
+  | 'new_user'
+  | 'existing_user'
+  | 'flow_extension_install'
+  | 'flow_amber_install'
+  | 'flow_amber_login'
+  | 'flow_passkey_create'
+  | 'flow_passkey_login'
+  | 'flow_password_create'
+  | 'flow_password_login'
+  | 'flow_nostr_connect';
 
 interface NostrConnectModalProps {
   open: boolean;
@@ -10,7 +23,100 @@ interface NostrConnectModalProps {
   onSuccess: () => void;
 }
 
+const NEW_USER_OPTIONS = [
+  { id: 'extension_install' as const, titleKey: 'Install Browser Extension', descKey: 'Find a Nostr browser extension (e.g. Quetta) and install it.', comingSoon: true, flow: 'flow_extension_install' as ConnectStep },
+  { id: 'amber_install' as const, titleKey: 'Install Amber on Android', descKey: 'Get Amber from GitHub or the Play Store to use as a remote signer.', comingSoon: false, flow: 'flow_amber_install' as ConnectStep },
+  { id: 'password_create' as const, titleKey: 'Create Password Protected Keypair', descKey: 'Generate a key and encrypt it with a password. Works on every platform.', comingSoon: false, flow: 'flow_password_create' as ConnectStep },
+  { id: 'passkey_create' as const, titleKey: 'Create Passkey Protected Keypair', descKey: 'Use your device passkey (Face ID, Touch ID, or security key). Browser only.', comingSoon: false, flow: 'flow_passkey_create' as ConnectStep },
+];
+
+const EXISTING_USER_OPTIONS = [
+  { id: 'extension_login' as const, titleKey: 'Extension Login', descKey: 'Sign in with your browser extension (e.g. Quetta). Desktop or Android with Quetta.', comingSoon: true },
+  { id: 'amber_login' as const, titleKey: 'Amber Login', descKey: 'Open the NIP-55 flow to connect your Android signer.', comingSoon: false, flow: 'flow_amber_login' as ConnectStep },
+  { id: 'password_login' as const, titleKey: 'Password Protected Login', descKey: 'Paste your ncryptsec and enter your password to unlock.', comingSoon: false, flow: 'flow_password_login' as ConnectStep },
+  { id: 'passkey_login' as const, titleKey: 'Passkey Protected Login', descKey: 'Verify with your passkey or set one up first.', comingSoon: false, flow: 'flow_passkey_login' as ConnectStep },
+  { id: 'nostr_connect' as const, titleKey: 'Nostr Connect (QR)', descKey: 'Scan the QR code with your signer app or copy the URI.', comingSoon: false, flow: 'flow_nostr_connect' as ConnectStep },
+];
+
+function SubCard(props: {
+  titleKey: string;
+  descKey: string;
+  comingSoon: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={props.comingSoon}
+      onClick={props.onClick}
+      class="w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
+    >
+      <p class="font-medium text-slate-900">{t(props.titleKey)}</p>
+      <p class="mt-1 text-sm text-slate-600">{t(props.descKey)}</p>
+      <Show when={props.comingSoon}>
+        <span class="mt-2 inline-block rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+          {t('Coming soon')}
+        </span>
+      </Show>
+    </button>
+  );
+}
+
+function ChoiceCard(props: { titleKey: string; descKey: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      class="w-full rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+    >
+      <p class="font-medium text-slate-900">{t(props.titleKey)}</p>
+      <p class="mt-1 text-sm text-slate-600">{t(props.descKey)}</p>
+    </button>
+  );
+}
+
 export function NostrConnectModal(props: NostrConnectModalProps) {
+  const [step, setStep] = createSignal<ConnectStep>('choice');
+
+  function handleBack() {
+    const s = step();
+
+    if (s === 'new_user' || s === 'existing_user') {
+      setStep('choice');
+    } else if (
+      s === 'flow_extension_install' ||
+      s === 'flow_amber_install' ||
+      s === 'flow_password_create' ||
+      s === 'flow_passkey_create'
+    ) {
+      setStep('new_user');
+    } else if (
+      s === 'flow_amber_login' ||
+      s === 'flow_password_login' ||
+      s === 'flow_passkey_login' ||
+      s === 'flow_nostr_connect'
+    ) {
+      setStep('existing_user');
+    }
+  }
+
+  const isFlowStep = (): boolean => {
+    const s = step();
+
+    return (
+      s === 'flow_extension_install' ||
+      s === 'flow_amber_install' ||
+      s === 'flow_amber_login' ||
+      s === 'flow_passkey_create' ||
+      s === 'flow_passkey_login' ||
+      s === 'flow_password_create' ||
+      s === 'flow_password_login' ||
+      s === 'flow_nostr_connect'
+    );
+  };
+
+  const showBack = (): boolean => step() !== 'choice';
+
   return (
     <Show when={props.open}>
       <div
@@ -26,21 +132,93 @@ export function NostrConnectModal(props: NostrConnectModalProps) {
       >
         <div class="fixed inset-0 bg-slate-900/50" aria-hidden="true" />
         <div
-          class="relative z-10 w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
+          class="relative z-10 flex w-full max-w-sm flex-col rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <h2 id="nostr-connect-modal-title" class="text-lg font-semibold text-slate-900">
-            {t('Connect')}
-          </h2>
-          <div class="mt-4">
-            <NostrConnectAuth
-              onSuccess={() => {
-                props.onSuccess();
-                props.onClose();
-              }}
-              onError={() => {}}
-            />
+          <div class="flex items-center gap-2">
+            <Show when={showBack()}>
+              <button
+                type="button"
+                onClick={handleBack}
+                class="rounded-lg p-1 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label={t('Back')}
+              >
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            </Show>
+            <h2 id="nostr-connect-modal-title" class="text-lg font-semibold text-slate-900">
+              {t('Connect')}
+            </h2>
           </div>
+
+          <div class="mt-4 flex-1 overflow-y-auto">
+            <Show when={step() === 'choice'}>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <ChoiceCard
+                  titleKey="New User"
+                  descKey="I don't have a Nostr account or signer yet"
+                  onClick={() => setStep('new_user')}
+                />
+                <ChoiceCard
+                  titleKey="Existing User"
+                  descKey="I already use Nostr and want to connect"
+                  onClick={() => setStep('existing_user')}
+                />
+              </div>
+            </Show>
+
+            <Show when={step() === 'new_user'}>
+              <div class="space-y-3">
+                {NEW_USER_OPTIONS.map((opt) => (
+                  <SubCard
+                    titleKey={opt.titleKey}
+                    descKey={opt.descKey}
+                    comingSoon={opt.comingSoon}
+                    onClick={
+                      opt.comingSoon
+                        ? undefined
+                        : opt.id === 'amber_install'
+                          ? () => window.open('https://github.com/greenart7c3/Amber', '_blank')
+                          : opt.flow
+                            ? () => setStep(opt.flow!)
+                            : undefined
+                    }
+                  />
+                ))}
+              </div>
+            </Show>
+
+            <Show when={step() === 'existing_user'}>
+              <div class="space-y-3">
+                {EXISTING_USER_OPTIONS.map((opt) => (
+                  <SubCard
+                    titleKey={opt.titleKey}
+                    descKey={opt.descKey}
+                    comingSoon={opt.comingSoon}
+                    onClick={
+                      opt.flow && !opt.comingSoon
+                        ? () => setStep(opt.flow!)
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            </Show>
+
+            <Show when={isFlowStep()}>
+              <NostrConnectAuth
+                flow={step()}
+                onSuccess={() => {
+                  props.onSuccess();
+                  props.onClose();
+                }}
+                onError={() => {}}
+              />
+            </Show>
+          </div>
+
           <div class="mt-4 flex justify-end">
             <button
               type="button"

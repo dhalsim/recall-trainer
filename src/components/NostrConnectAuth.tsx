@@ -7,6 +7,7 @@ import { createSignal } from 'solid-js';
 
 import { useNostrAuth } from '../contexts/NostrAuthContext';
 import { t } from '../i18n';
+import { store } from '../store';
 import { buildNip55GetPublicKeyUri, saveNip55PendingRequest } from '../lib/nostr/Nip55Provider';
 import {
   decryptContent,
@@ -14,8 +15,14 @@ import {
   type NostrConnectData,
 } from '../lib/nostr/NostrConnectProvider';
 import { createPasskeyCredentials, isPasskeySupported } from '../lib/nostr/PasskeySignerProvider';
+import {
+  createPasswordProtectedKeypair,
+  createPasswordSigner,
+} from '../lib/nostr/PasswordSignerProvider';
+import type { ConnectStep } from './NostrConnectModal';
 
 interface NostrConnectAuthProps {
+  flow?: ConnectStep;
   onSuccess: (result: {
     success: true;
     provider: import('../lib/nostr/types').NostrProvider;
@@ -33,8 +40,35 @@ function isAndroid(): boolean {
   return /Android/i.test(navigator.userAgent);
 }
 
+function showPasskeyCreate(flow: ConnectStep | undefined): boolean {
+  return !flow || flow === 'flow_passkey_create';
+}
+
+function showPasskeyLogin(flow: ConnectStep | undefined): boolean {
+  return !flow || flow === 'flow_passkey_login';
+}
+
+function showAndroid(flow: ConnectStep | undefined): boolean {
+  return !flow || flow === 'flow_amber_login';
+}
+
+function showNostrConnect(flow: ConnectStep | undefined): boolean {
+  return !flow || flow === 'flow_nostr_connect';
+}
+
+function showPasswordCreate(flow: ConnectStep | undefined): boolean {
+  return flow === 'flow_password_create';
+}
+
+function showPasswordLogin(flow: ConnectStep | undefined): boolean {
+  return flow === 'flow_password_login';
+}
+
 export function NostrConnectAuth(props: NostrConnectAuthProps) {
-  const { loginWithNostrConnect, loginWithPasskey } = useNostrAuth();
+  const flow = (): ConnectStep | undefined => props.flow;
+  const auth = useNostrAuth();
+  const { loginWithNostrConnect, loginWithPasskey, loginWithPasswordSigner, getPublicKey } = auth;
+  const authState = () => store.state().authLoginState;
   const [generatedUri, setGeneratedUri] = createSignal('');
   const [qrSvg, setQrSvg] = createSignal('');
   const [isQrLoading, setIsQrLoading] = createSignal(false);
@@ -45,6 +79,12 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   const [isTyping, setIsTyping] = createSignal(false);
   const [passkeySupported, setPasskeySupported] = createSignal(false);
   const [passkeyLoading, setPasskeyLoading] = createSignal(false);
+  const [passwordCreateLoading, setPasswordCreateLoading] = createSignal(false);
+  const [passwordLoginLoading, setPasswordLoginLoading] = createSignal(false);
+  const [passwordCreatePassword, setPasswordCreatePassword] = createSignal('');
+  const [passwordCreateConfirm, setPasswordCreateConfirm] = createSignal('');
+  const [passwordLoginNcryptsec, setPasswordLoginNcryptsec] = createSignal('');
+  const [passwordLoginPassword, setPasswordLoginPassword] = createSignal('');
 
   const [currentSubscription, setCurrentSubscription] = createSignal<{ close: () => void } | null>(
     null,
@@ -188,8 +228,15 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   }
 
   onMount(() => {
-    void refresh();
-    void isPasskeySupported().then(setPasskeySupported);
+    const f = flow();
+
+    if (showNostrConnect(f)) {
+      void refresh();
+    }
+
+    if (showPasskeyCreate(f) || showPasskeyLogin(f)) {
+      void isPasskeySupported().then(setPasskeySupported);
+    }
   });
 
   async function handleSetUpPasskey() {
@@ -222,10 +269,68 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
     }
   });
 
+  async function handlePasswordCreate() {
+    const password = passwordCreatePassword().trim();
+    const confirm = passwordCreateConfirm().trim();
+
+    if (!password || password !== confirm) {
+      props.onError(t('Passwords do not match.'));
+      return;
+    }
+
+    setPasswordCreateLoading(true);
+    props.onError('');
+
+    try {
+      const data = createPasswordProtectedKeypair(password);
+      const loginResult = await loginWithPasswordSigner(data, password);
+
+      if (loginResult.success) {
+        props.onSuccess(loginResult);
+      } else {
+        props.onError(t('Login failed'));
+      }
+    } catch (error) {
+      console.error('Password create failed:', error);
+      props.onError(error instanceof Error ? error.message : t('Login failed'));
+    } finally {
+      setPasswordCreateLoading(false);
+    }
+  }
+
+  async function handlePasswordLogin() {
+    const ncryptsec = passwordLoginNcryptsec().trim();
+    const password = passwordLoginPassword();
+
+    if (!ncryptsec || !password) {
+      props.onError(t('Enter your ncryptsec and password.'));
+      return;
+    }
+
+    setPasswordLoginLoading(true);
+    props.onError('');
+
+    try {
+      const data = { ncryptsec };
+      const loginResult = await loginWithPasswordSigner(data, password);
+
+      if (loginResult.success) {
+        props.onSuccess(loginResult);
+      } else {
+        props.onError(t('Login failed'));
+      }
+    } catch (error) {
+      console.error('Password login failed:', error);
+      props.onError(error instanceof Error ? error.message : t('Login failed'));
+    } finally {
+      setPasswordLoginLoading(false);
+    }
+  }
+
   return (
     <div class="space-y-4 max-h-[70vh] overflow-y-auto">
       <div class="space-y-4">
-        <Show when={passkeySupported()}>
+        <Show when={showPasskeyCreate(flow()) && passkeySupported()}>
           <div class="flex flex-col gap-2">
             <p class="text-center text-sm text-slate-600">
               {t('Use your device passkey (Face ID, Touch ID, or security key) to sign in.')}
@@ -244,6 +349,135 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
           </div>
         </Show>
 
+        <Show when={showPasskeyLogin(flow())}>
+          <div class="flex flex-col gap-2">
+            <Show
+              when={authState()?.method === 'passkey_signer'}
+              fallback={
+                <p class="text-center text-sm text-slate-600">
+                  {t("Set up a passkey first")} ({t('New User')} → {t('Create Passkey Protected Keypair')})
+                </p>
+              }
+            >
+              <p class="text-center text-sm text-slate-600">{t("You're signed in with passkey")}</p>
+              <button
+                type="button"
+                disabled={passkeyLoading()}
+                onClick={async () => {
+                  setPasskeyLoading(true);
+                  props.onError('');
+                  try {
+                    const pubkey = await getPublicKey();
+                    const p = auth.provider;
+
+                    if (pubkey && p) {
+                      props.onSuccess({ success: true, provider: p });
+                    } else {
+                      props.onError(t('Login failed'));
+                    }
+                  } catch {
+                    props.onError(t('Login failed'));
+                  } finally {
+                    setPasskeyLoading(false);
+                  }
+                }}
+                class="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-400 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800"
+              >
+                {t('Verify passkey')}
+              </button>
+            </Show>
+          </div>
+        </Show>
+
+        <Show when={showPasswordCreate(flow())}>
+          <div class="flex flex-col gap-3">
+            <p class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {t('Password backup warning')}
+            </p>
+            <div class="space-y-2">
+              <label for="password-create-password" class="block text-sm font-medium text-slate-700">
+                {t('Password')}
+              </label>
+              <input
+                id="password-create-password"
+                type="password"
+                value={passwordCreatePassword()}
+                onInput={(e) => setPasswordCreatePassword(e.currentTarget.value)}
+                class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+                autocomplete="new-password"
+              />
+            </div>
+            <div class="space-y-2">
+              <label for="password-create-confirm" class="block text-sm font-medium text-slate-700">
+                {t('Confirm password')}
+              </label>
+              <input
+                id="password-create-confirm"
+                type="password"
+                value={passwordCreateConfirm()}
+                onInput={(e) => setPasswordCreateConfirm(e.currentTarget.value)}
+                class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+                autocomplete="new-password"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={passwordCreateLoading()}
+              onClick={() => void handlePasswordCreate()}
+              class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            >
+              <Show when={passwordCreateLoading()} fallback={t('Create keypair')}>
+                <span class="h-4 w-4 animate-spin rounded-full border-2 border-b-white" />
+              </Show>
+            </button>
+          </div>
+        </Show>
+
+        <Show when={showPasswordLogin(flow())}>
+          <div class="flex flex-col gap-3">
+            <p class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {t('Password backup warning')}
+            </p>
+            <div class="space-y-2">
+              <label for="password-login-ncryptsec" class="block text-sm font-medium text-slate-700">
+                {t('Paste ncryptsec')}
+              </label>
+              <textarea
+                id="password-login-ncryptsec"
+                value={passwordLoginNcryptsec()}
+                onInput={(e) => setPasswordLoginNcryptsec(e.currentTarget.value)}
+                rows={3}
+                placeholder="ncryptsec1..."
+                class="block w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900"
+              />
+            </div>
+            <div class="space-y-2">
+              <label for="password-login-password" class="block text-sm font-medium text-slate-700">
+                {t('Password')}
+              </label>
+              <input
+                id="password-login-password"
+                type="password"
+                value={passwordLoginPassword()}
+                onInput={(e) => setPasswordLoginPassword(e.currentTarget.value)}
+                class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+                autocomplete="current-password"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={passwordLoginLoading()}
+              onClick={() => void handlePasswordLogin()}
+              class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            >
+              <Show when={passwordLoginLoading()} fallback={t('Unlock')}>
+                <span class="h-4 w-4 animate-spin rounded-full border-2 border-b-white" />
+              </Show>
+            </button>
+          </div>
+        </Show>
+
+        <Show when={showNostrConnect(flow())}>
         <div class="space-y-2">
           <div class="flex justify-center">
             <div class="rounded-lg border-2 border-slate-200 bg-white p-4">
@@ -347,6 +581,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
               />
             </div>
           </div>
+        </Show>
         </Show>
       </div>
     </div>

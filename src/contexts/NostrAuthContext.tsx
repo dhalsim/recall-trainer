@@ -13,11 +13,13 @@ import {
   type NostrConnectData,
 } from '../lib/nostr/NostrConnectProvider';
 import { createPasskeySigner } from '../lib/nostr/PasskeySignerProvider';
+import { createPasswordSigner } from '../lib/nostr/PasswordSignerProvider';
 import type {
   LoginResult,
   Nip55SignerData,
   NostrProvider,
   PasskeySignerData,
+  PasswordSignerData,
   SignEventParams,
   SignEventResult,
 } from '../lib/nostr/types';
@@ -33,6 +35,7 @@ interface NostrAuthContextValue {
   loginWithNostrConnect: (data: NostrConnectData) => Promise<LoginResult>;
   loginWithNip55: (data: Nip55SignerData) => Promise<LoginResult>;
   loginWithPasskey: (data: PasskeySignerData) => Promise<LoginResult>;
+  loginWithPasswordSigner: (data: PasswordSignerData, password: string) => Promise<LoginResult>;
   logout: () => void;
   getPublicKey: (params?: { options?: { reason?: string } }) => Promise<string | null>;
   signEvent: (params: SignEventParams) => Promise<SignEventResult>;
@@ -118,6 +121,14 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
             }
 
             break;
+          case 'password_signer':
+            if ('ncryptsec' in auth.data && !('credentialId' in auth.data)) {
+              setProvider(createPasswordSigner(auth.data));
+            } else {
+              setProvider(null);
+            }
+
+            break;
           default:
             assertUnreachable(auth.method);
         }
@@ -197,6 +208,33 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     }
   };
 
+  const loginWithPasswordSigner = async (
+    data: PasswordSignerData,
+    password: string,
+  ): Promise<LoginResult> => {
+    try {
+      const p = createPasswordSigner(data);
+
+      await p.unlock(password);
+
+      store.setAuthLoginState({
+        method: 'password_signer',
+        loggedIn: true,
+        data,
+      });
+
+      setProvider(p);
+
+      return { success: true, provider: p };
+    } catch (error) {
+      console.error('Password signer login failed:', error);
+      store.clearAuthLoginState();
+      setProvider(null);
+
+      return { success: false, provider: null };
+    }
+  };
+
   const getPendingNip55SignResult = (): SignEventResult | null => {
     const result = pendingNip55SignResult();
 
@@ -251,6 +289,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     loginWithNostrConnect,
     loginWithNip55,
     loginWithPasskey,
+    loginWithPasswordSigner,
     logout,
     getPublicKey,
     signEvent,
