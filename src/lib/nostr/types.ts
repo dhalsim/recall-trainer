@@ -1,6 +1,6 @@
 import type { EventTemplate, NostrEvent } from 'nostr-tools';
 
-export type NostrProviderMethod = 'nostrconnect' | 'nip55';
+export type NostrProviderMethod = 'nostrconnect' | 'nip55' | 'passkey_signer';
 
 export type ProviderCapability = 'getRelays' | 'signEvent' | 'getPublicKey';
 
@@ -42,6 +42,13 @@ export interface Nip55SignerData {
   pubkey: string;
 }
 
+/** Persisted data for Passkey Signer (WebAuthn PRF + NIP-49). */
+export interface PasskeySignerData {
+  ncryptsec: string;
+  credentialId: string;
+  salt: string;
+}
+
 export type LoginResult =
   | { success: true; provider: NostrProvider }
   | { success: false; provider: null };
@@ -52,5 +59,5 @@ export type AuthIntent = 'log_in' | 'read_pubkey' | 'sign_event';
 export type AuthLoginState = {
   method: NostrProviderMethod;
   loggedIn: boolean;
-  data?: NostrConnectData | Nip55SignerData;
+  data?: NostrConnectData | Nip55SignerData | PasskeySignerData;
 };

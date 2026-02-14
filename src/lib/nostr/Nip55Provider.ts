@@ -63,7 +63,8 @@ export function saveNip55PendingRequest(
   payload: { event?: EventTemplate },
 ): void {
   const request: Nip55PendingRequest = {
-    requestId: crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2),
+    requestId:
+      crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2),
     type,
     timestamp: Date.now(),
     ...payload,

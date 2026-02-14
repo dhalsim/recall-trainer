@@ -90,5 +90,7 @@
   "Connect": "Bağlan",
   "Profile": "Profil",
   "Open Android Signer": "Android İmzalayıcıyı Aç",
-  "On Android you can open your signer app directly.": "Android'de imzalayıcı uygulamanızı doğrudan açabilirsiniz."
+  "On Android you can open your signer app directly.": "Android'de imzalayıcı uygulamanızı doğrudan açabilirsiniz.",
+  "Set up Passkey": "Parola Anahtarı Kur",
+  "Use your device passkey (Face ID, Touch ID, or security key) to sign in.": "Giriş yapmak için cihaz parola anahtarınızı (Face ID, Touch ID veya güvenlik anahtarı) kullanın."
 }

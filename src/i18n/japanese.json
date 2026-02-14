@@ -90,5 +90,7 @@
   "Connect": "接続",
   "Profile": "プロフィール",
   "Open Android Signer": "Android サインアプリを開く",
-  "On Android you can open your signer app directly.": "Android ではサインアプリを直接開けます。"
+  "On Android you can open your signer app directly.": "Android ではサインアプリを直接開けます。",
+  "Set up Passkey": "パスキーを設定",
+  "Use your device passkey (Face ID, Touch ID, or security key) to sign in.": "サインインにはデバイスのパスキー（Face ID、Touch ID、またはセキュリティキー）を使用します。"
 }

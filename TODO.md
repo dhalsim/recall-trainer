@@ -36,7 +36,7 @@ Check AGENTS.md for the requirements.
   - New provider method `'passkey_signer'` in types; new factory `createPasskeySigner()` in `src/lib/nostr/PasskeySignerProvider.ts`.
   - See `docs/NOSTR_CONNECT_PLAN.md` §11.7 for full design.
 
-- [ ] **Android Signer (NIP-55 web flow) — NostrConnect alternative**
+- [x] **Android Signer (NIP-55 web flow) — NostrConnect alternative**
   - Add `nostrsigner:` URI scheme support as an alternative connection method for Android users with a signer app (e.g. Amber).
   - Instead of QR / copy connection string, the user taps "Open Android Signer" → redirected via `nostrsigner:` intent → signer app returns result via callback URL or clipboard.
   - Login: `get_public_key` via intent → receive pubkey via callback URL query param → store pubkey, set provider.

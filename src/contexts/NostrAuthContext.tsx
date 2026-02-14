@@ -2,25 +2,27 @@ import type { JSX } from 'solid-js';
 import { createContext, createEffect, createSignal, useContext } from 'solid-js';
 
 import {
-  createNostrConnectProvider,
-  type NostrConnectData,
-} from '../lib/nostr/NostrConnectProvider';
-import {
   checkNip55Callback,
   clearNip55Result,
   createNip55Provider,
   getNip55Result,
   parseNip55SignEventResult,
 } from '../lib/nostr/Nip55Provider';
+import {
+  createNostrConnectProvider,
+  type NostrConnectData,
+} from '../lib/nostr/NostrConnectProvider';
+import { createPasskeySigner } from '../lib/nostr/PasskeySignerProvider';
 import type {
   LoginResult,
   Nip55SignerData,
   NostrProvider,
+  PasskeySignerData,
   SignEventParams,
   SignEventResult,
 } from '../lib/nostr/types';
-import { assertUnreachable } from '../utils/nostr';
 import { store } from '../store';
+import { assertUnreachable } from '../utils/nostr';
 
 export type { NostrConnectData, LoginResult, NostrProvider };
 
@@ -30,6 +32,7 @@ interface NostrAuthContextValue {
   isInitialized: () => boolean;
   loginWithNostrConnect: (data: NostrConnectData) => Promise<LoginResult>;
   loginWithNip55: (data: Nip55SignerData) => Promise<LoginResult>;
+  loginWithPasskey: (data: PasskeySignerData) => Promise<LoginResult>;
   logout: () => void;
   getPublicKey: (params?: { options?: { reason?: string } }) => Promise<string | null>;
   signEvent: (params: SignEventParams) => Promise<SignEventResult>;
@@ -51,6 +54,7 @@ export function useNostrAuth(): NostrAuthContextValue {
 export function NostrAuthProvider(props: { children: JSX.Element }) {
   const [provider, setProvider] = createSignal<NostrProvider | null>(null);
   const [isInitialized, setIsInitialized] = createSignal(false);
+
   const [pendingNip55SignResult, setPendingNip55SignResult] = createSignal<SignEventResult | null>(
     null,
   );
@@ -67,12 +71,15 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
           loggedIn: true,
           data: { pubkey: nip55Result.result },
         });
+
         setProvider(createNip55Provider({ pubkey: nip55Result.result }));
         clearNip55Result();
       } else if (nip55Result.type === 'sign_event') {
         const auth = store.state().authLoginState;
+
         const nip55Data: Nip55SignerData | null =
           auth?.method === 'nip55' && auth.data && 'pubkey' in auth.data ? auth.data : null;
+
         const p = nip55Data ? createNip55Provider(nip55Data) : createNip55Provider({ pubkey: '' });
         const signedEvent = parseNip55SignEventResult(nip55Result.result);
         setPendingNip55SignResult({ signedEvent, provider: p });
@@ -93,6 +100,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
             } else {
               setProvider(null);
             }
+
             break;
           case 'nip55':
             if ('pubkey' in auth.data) {
@@ -100,6 +108,15 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
             } else {
               setProvider(null);
             }
+
+            break;
+          case 'passkey_signer':
+            if ('ncryptsec' in auth.data && 'credentialId' in auth.data) {
+              setProvider(createPasskeySigner(auth.data));
+            } else {
+              setProvider(null);
+            }
+
             break;
           default:
             assertUnreachable(auth.method);
@@ -151,6 +168,28 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
       return { success: true, provider: p };
     } catch (error) {
       console.error('NIP-55 login failed:', error);
+      store.clearAuthLoginState();
+      setProvider(null);
+
+      return { success: false, provider: null };
+    }
+  };
+
+  const loginWithPasskey = async (data: PasskeySignerData): Promise<LoginResult> => {
+    try {
+      store.setAuthLoginState({
+        method: 'passkey_signer',
+        loggedIn: true,
+        data,
+      });
+
+      const p = createPasskeySigner(data);
+
+      setProvider(p);
+
+      return { success: true, provider: p };
+    } catch (error) {
+      console.error('Passkey signer login failed:', error);
       store.clearAuthLoginState();
       setProvider(null);
 
@@ -211,6 +250,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     isInitialized,
     loginWithNostrConnect,
     loginWithNip55,
+    loginWithPasskey,
     logout,
     getPublicKey,
     signEvent,

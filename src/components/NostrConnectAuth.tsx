@@ -7,15 +7,13 @@ import { createSignal } from 'solid-js';
 
 import { useNostrAuth } from '../contexts/NostrAuthContext';
 import { t } from '../i18n';
+import { buildNip55GetPublicKeyUri, saveNip55PendingRequest } from '../lib/nostr/Nip55Provider';
 import {
   decryptContent,
   generateNostrConnectUri,
   type NostrConnectData,
 } from '../lib/nostr/NostrConnectProvider';
-import {
-  buildNip55GetPublicKeyUri,
-  saveNip55PendingRequest,
-} from '../lib/nostr/Nip55Provider';
+import { createPasskeyCredentials, isPasskeySupported } from '../lib/nostr/PasskeySignerProvider';
 
 interface NostrConnectAuthProps {
   onSuccess: (result: {
@@ -36,7 +34,7 @@ function isAndroid(): boolean {
 }
 
 export function NostrConnectAuth(props: NostrConnectAuthProps) {
-  const { loginWithNostrConnect } = useNostrAuth();
+  const { loginWithNostrConnect, loginWithPasskey } = useNostrAuth();
   const [generatedUri, setGeneratedUri] = createSignal('');
   const [qrSvg, setQrSvg] = createSignal('');
   const [isQrLoading, setIsQrLoading] = createSignal(false);
@@ -45,6 +43,8 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   const [showRelayInput, setShowRelayInput] = createSignal(false);
   const [showCopied, setShowCopied] = createSignal(false);
   const [isTyping, setIsTyping] = createSignal(false);
+  const [passkeySupported, setPasskeySupported] = createSignal(false);
+  const [passkeyLoading, setPasskeyLoading] = createSignal(false);
 
   const [currentSubscription, setCurrentSubscription] = createSignal<{ close: () => void } | null>(
     null,
@@ -189,7 +189,30 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
 
   onMount(() => {
     void refresh();
+    void isPasskeySupported().then(setPasskeySupported);
   });
+
+  async function handleSetUpPasskey() {
+    setPasskeyLoading(true);
+    props.onError('');
+
+    try {
+      const result = await createPasskeyCredentials();
+      const loginResult = await loginWithPasskey(result);
+
+      if (loginResult.success) {
+        props.onSuccess(loginResult);
+      } else {
+        props.onError(t('Login failed'));
+      }
+    } catch (error) {
+      console.error('Passkey setup failed:', error);
+
+      props.onError(error instanceof Error ? error.message : t('Login failed'));
+    } finally {
+      setPasskeyLoading(false);
+    }
+  }
 
   onCleanup(() => {
     const sub = currentSubscription();
@@ -202,6 +225,25 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   return (
     <div class="space-y-4 max-h-[70vh] overflow-y-auto">
       <div class="space-y-4">
+        <Show when={passkeySupported()}>
+          <div class="flex flex-col gap-2">
+            <p class="text-center text-sm text-slate-600">
+              {t('Use your device passkey (Face ID, Touch ID, or security key) to sign in.')}
+            </p>
+            <button
+              type="button"
+              disabled={passkeyLoading()}
+              onClick={() => void handleSetUpPasskey()}
+              class="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-400 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800 shadow-sm transition-colors hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:opacity-50"
+            >
+              <Show when={passkeyLoading()} fallback={t('Set up Passkey')}>
+                <span class="h-4 w-4 animate-spin rounded-full border-2 border-b-emerald-600" />
+                <span>{t('Set up Passkey')}</span>
+              </Show>
+            </button>
+          </div>
+        </Show>
+
         <div class="space-y-2">
           <div class="flex justify-center">
             <div class="rounded-lg border-2 border-slate-200 bg-white p-4">
@@ -272,7 +314,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
           </div>
         </Show>
 
-        <div class="flex justify-center gap-2">
+        <div class="flex justify-center gap-2 p-4">
           <button
             type="button"
             onClick={() => setShowRelayInput((v) => !v)}

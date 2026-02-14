@@ -90,5 +90,7 @@
   "Connect": "Connect",
   "Profile": "Profile",
   "Open Android Signer": "Open Android Signer",
-  "On Android you can open your signer app directly.": "On Android you can open your signer app directly."
+  "On Android you can open your signer app directly.": "On Android you can open your signer app directly.",
+  "Set up Passkey": "Set up Passkey",
+  "Use your device passkey (Face ID, Touch ID, or security key) to sign in.": "Use your device passkey (Face ID, Touch ID, or security key) to sign in."
 }
