@@ -1,6 +1,6 @@
 import type { EventTemplate, NostrEvent } from 'nostr-tools';
 
-export type NostrProviderMethod = 'nip07' | 'nip46' | 'nsec' | 'nostrconnect' | 'none';
+export type NostrProviderMethod = 'nostrconnect' | 'nip55';
 
 export type ProviderCapability = 'getRelays' | 'signEvent' | 'getPublicKey';
 
@@ -37,6 +37,11 @@ export interface NostrConnectData {
   remoteSignerPubkey: string | null;
 }
 
+/** Persisted data for NIP-55 Android Signer (nostrsigner: intent). */
+export interface Nip55SignerData {
+  pubkey: string;
+}
+
 export type LoginResult =
   | { success: true; provider: NostrProvider }
   | { success: false; provider: null };
@@ -47,5 +52,5 @@ export type AuthIntent = 'log_in' | 'read_pubkey' | 'sign_event';
 export type AuthLoginState = {
   method: NostrProviderMethod;
   loggedIn: boolean;
-  data?: NostrConnectData;
+  data?: NostrConnectData | Nip55SignerData;
 };

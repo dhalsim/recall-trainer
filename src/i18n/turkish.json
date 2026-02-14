@@ -88,5 +88,7 @@
   "Sign in with Nostr": "Nostr ile giriş yap",
   "Log out": "Çıkış yap",
   "Connect": "Bağlan",
-  "Profile": "Profil"
+  "Profile": "Profil",
+  "Open Android Signer": "Android İmzalayıcıyı Aç",
+  "On Android you can open your signer app directly.": "Android'de imzalayıcı uygulamanızı doğrudan açabilirsiniz."
 }

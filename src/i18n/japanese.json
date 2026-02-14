@@ -88,5 +88,7 @@
   "Sign in with Nostr": "Nostr でサインイン",
   "Log out": "ログアウト",
   "Connect": "接続",
-  "Profile": "プロフィール"
+  "Profile": "プロフィール",
+  "Open Android Signer": "Android サインアプリを開く",
+  "On Android you can open your signer app directly.": "Android ではサインアプリを直接開けます。"
 }

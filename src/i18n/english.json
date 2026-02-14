@@ -88,5 +88,7 @@
   "Sign in with Nostr": "Sign in with Nostr",
   "Log out": "Log out",
   "Connect": "Connect",
-  "Profile": "Profile"
+  "Profile": "Profile",
+  "Open Android Signer": "Open Android Signer",
+  "On Android you can open your signer app directly.": "On Android you can open your signer app directly."
 }

@@ -12,6 +12,10 @@ import {
   generateNostrConnectUri,
   type NostrConnectData,
 } from '../lib/nostr/NostrConnectProvider';
+import {
+  buildNip55GetPublicKeyUri,
+  saveNip55PendingRequest,
+} from '../lib/nostr/Nip55Provider';
 
 interface NostrConnectAuthProps {
   onSuccess: (result: {
@@ -22,6 +26,14 @@ interface NostrConnectAuthProps {
 }
 
 const DEFAULT_RELAY = 'wss://relay.nsec.app';
+
+function isAndroid(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+
+  return /Android/i.test(navigator.userAgent);
+}
 
 export function NostrConnectAuth(props: NostrConnectAuthProps) {
   const { loginWithNostrConnect } = useNostrAuth();
@@ -170,6 +182,11 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
     }
   }
 
+  function openAndroidSigner() {
+    saveNip55PendingRequest('get_public_key', {});
+    window.location.href = buildNip55GetPublicKeyUri();
+  }
+
   onMount(() => {
     void refresh();
   });
@@ -239,6 +256,21 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
             </div>
           </Show>
         </div>
+
+        <Show when={isAndroid()}>
+          <div class="flex flex-col gap-2">
+            <p class="text-center text-sm text-slate-600">
+              {t('On Android you can open your signer app directly.')}
+            </p>
+            <button
+              type="button"
+              onClick={openAndroidSigner}
+              class="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-400 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+            >
+              {t('Open Android Signer')}
+            </button>
+          </div>
+        </Show>
 
         <div class="flex justify-center gap-2">
           <button
