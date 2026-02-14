@@ -1,35 +1,19 @@
-import { LanguageSelection } from './screens/LanguageSelection';
-import { ModeSelection } from './screens/ModeSelection';
-import { TestMode } from './screens/TestMode';
-import { WordEntry } from './screens/WordEntry';
-import { store } from './store';
+import { Navigate, Route, Router } from '@solidjs/router';
 
-function App() {
-  const showLanguageSelection = () => {
-    const s = store.state();
+import { HomeRoute, ModeRoute, RootLayout, TestRoute, WordsRoute } from './routes';
 
-    return !s.languageSelectionComplete || s.mainLanguage === null || s.targetLanguage === null;
-  };
-
-  const renderScreen = () => {
-    if (showLanguageSelection()) {
-      return <LanguageSelection />;
-    }
-
-    const screen = store.state().screen;
-    switch (screen) {
-      case 'mode_selection':
-        return <ModeSelection />;
-      case 'word_entry':
-        return <WordEntry />;
-      case 'test':
-        return <TestMode />;
-      default:
-        return <ModeSelection />;
-    }
-  };
-
-  return <div class="min-h-screen bg-slate-50 p-6">{renderScreen()}</div>;
+function RedirectToHome() {
+  return <Navigate href="/" />;
 }
 
-export default App;
+export default function App() {
+  return (
+    <Router root={RootLayout}>
+      <Route path="/" component={HomeRoute} />
+      <Route path="/mode" component={ModeRoute} />
+      <Route path="/words" component={WordsRoute} />
+      <Route path="/test" component={TestRoute} />
+      <Route path="*" component={RedirectToHome} />
+    </Router>
+  );
+}

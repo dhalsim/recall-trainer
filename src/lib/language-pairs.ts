@@ -1,9 +1,10 @@
 import type { AppLanguage } from '../store';
 
+/** Language names in their own language (for display in language selection). */
 export const LANGUAGE_LABELS: Record<AppLanguage, string> = {
   en: 'English',
-  ja: 'Japanese',
-  tr: 'Turkish',
+  ja: '日本語',
+  tr: 'Türkçe',
 };
 
 /**

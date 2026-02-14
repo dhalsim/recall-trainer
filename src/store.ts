@@ -161,6 +161,8 @@ export interface AppState {
   version: number;
   mainLanguage: AppLanguage | null;
   targetLanguage: AppLanguage | null;
+  /** UI language; when null, mainLanguage is used. */
+  appLocale: AppLanguage | null;
   languageSelectionComplete: boolean;
   screen: AppScreen;
   entries: VocabEntry[];
@@ -175,6 +177,7 @@ const defaultState: AppState = {
   version: SETTINGS_VERSION,
   mainLanguage: null,
   targetLanguage: null,
+  appLocale: null,
   languageSelectionComplete: false,
   screen: 'mode_selection',
   entries: [],
@@ -281,6 +284,7 @@ function migrateV3ToV4(parsed: AppStateV3): AppState {
     version: SETTINGS_VERSION,
     mainLanguage: parsed.mainLanguage ?? null,
     targetLanguage: parsed.targetLanguage ?? null,
+    appLocale: null,
     languageSelectionComplete: parsed.languageSelectionComplete ?? false,
     screen: parsed.screen ?? 'mode_selection',
     entries,
@@ -381,6 +385,7 @@ function loadState(): AppState {
       ...appState,
       version: SETTINGS_VERSION,
       entries,
+      appLocale: appState.appLocale ?? null,
       questionsPerSession:
         typeof appState.questionsPerSession === 'number'
           ? Math.min(
@@ -416,8 +421,10 @@ function createStore() {
   const [state, setState] = createSignal<AppState>(initialState);
   const [testSession, setTestSession] = createSignal<TestSessionSnapshot | null>(null);
 
-  if (initialState.mainLanguage) {
-    setLocale(initialState.mainLanguage);
+  const effectiveLocale = initialState.appLocale ?? initialState.mainLanguage;
+
+  if (effectiveLocale) {
+    setLocale(effectiveLocale);
   }
 
   const persist = (updater: (prev: AppState) => AppState): void => {
@@ -443,6 +450,15 @@ function createStore() {
 
   const setTargetLanguage = (lang: AppLanguage | null): void => {
     persist((prev) => ({ ...prev, targetLanguage: lang }));
+  };
+
+  const setAppLocale = (lang: AppLanguage | null): void => {
+    persist((prev) => ({ ...prev, appLocale: lang }));
+    const effective = lang ?? state().mainLanguage;
+
+    if (effective) {
+      setLocale(effective);
+    }
   };
 
   const completeLanguageSelection = (): void => {
@@ -616,6 +632,7 @@ function createStore() {
     clearTestSession,
     setMainLanguage,
     setTargetLanguage,
+    setAppLocale,
     completeLanguageSelection,
     setScreen,
     goToModeSelection,

@@ -1,3 +1,4 @@
+import { useNavigate } from '@solidjs/router';
 import { createSignal } from 'solid-js';
 
 import { SettingsDialog } from '../components/SettingsDialog';
@@ -6,19 +7,22 @@ import { store } from '../store';
 
 export function ModeSelection() {
   const [showSettings, setShowSettings] = createSignal(false);
+  const navigate = useNavigate();
 
   const handleEnterWords = () => {
     store.setScreen('word_entry');
+    navigate('/words');
   };
 
   const handleTakeTest = () => {
     store.setScreen('test');
+    navigate('/test');
   };
 
   return (
-    <div class="mx-auto max-w-md space-y-8">
-      <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold text-slate-900">Recall Trainer</h1>
+    <div class="mx-auto max-w-md space-y-8 sm:space-y-10">
+      <div class="flex items-center justify-between gap-4">
+        <h1 class="text-2xl font-bold text-slate-900 sm:text-3xl">Recall Trainer</h1>
         <button
           type="button"
           onClick={() => setShowSettings(true)}
@@ -46,18 +50,18 @@ export function ModeSelection() {
 
       <div class="space-y-4">
         <p class="text-slate-600">What would you like to do?</p>
-        <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-3 sm:gap-4" role="group" aria-label={t('Mode selection')}>
           <button
             type="button"
             onClick={handleEnterWords}
-            class="rounded-lg border-2 border-slate-200 bg-white px-4 py-4 text-left font-medium text-slate-700 transition-colors hover:border-blue-300 hover:bg-blue-50/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            class="rounded-lg border-2 border-slate-200 bg-white px-4 py-4 text-left font-medium text-slate-700 transition-colors hover:border-primary-300 hover:bg-primary-50/50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
           >
             {t('Enter words I struggle with')}
           </button>
           <button
             type="button"
             onClick={handleTakeTest}
-            class="rounded-lg border-2 border-slate-200 bg-white px-4 py-4 text-left font-medium text-slate-700 transition-colors hover:border-blue-300 hover:bg-blue-50/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            class="rounded-lg border-2 border-slate-200 bg-white px-4 py-4 text-left font-medium text-slate-700 transition-colors hover:border-primary-300 hover:bg-primary-50/50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
           >
             {t('Take a test')}
           </button>

@@ -1,13 +1,10 @@
+import { useNavigate } from '@solidjs/router';
 import { For } from 'solid-js';
 
 import { t } from '../i18n';
 import { LANGUAGE_LABELS, VALID_TARGETS } from '../lib/language-pairs';
 import type { AppLanguage } from '../store';
 import { store } from '../store';
-
-function getLabelKey(lang: AppLanguage): string {
-  return LANGUAGE_LABELS[lang];
-}
 
 export function LanguageSelection() {
   const main = () => store.state().mainLanguage;
@@ -21,21 +18,25 @@ export function LanguageSelection() {
 
   const canContinue = () => main() !== null && target() !== null;
 
+  const navigate = useNavigate();
+
   const handleContinue = () => {
     if (canContinue()) {
       store.completeLanguageSelection();
+      store.setScreen('mode_selection');
+      navigate('/mode');
     }
   };
 
   return (
-    <div class="mx-auto max-w-md space-y-8">
-      <h1 class="text-2xl font-bold text-slate-900">Recall Trainer</h1>
+    <div class="mx-auto max-w-md space-y-8 sm:space-y-10">
+      <h1 class="text-2xl font-bold text-slate-900 sm:text-3xl">Recall Trainer</h1>
 
-      <div class="space-y-4">
-        <label class="block text-sm font-medium text-slate-700">
+      <div class="space-y-3 sm:space-y-4">
+        <span class="block text-sm font-medium text-slate-700" id="main-language-label">
           {t('Select your main language for the app')}
-        </label>
-        <div class="flex flex-wrap gap-2" role="group" aria-label="Main language">
+        </span>
+        <div class="flex flex-wrap gap-2 sm:gap-3" role="group" aria-labelledby="main-language-label">
           <For each={['en', 'ja', 'tr'] as AppLanguage[]}>
             {(lang) => (
               <button
@@ -51,7 +52,7 @@ export function LanguageSelection() {
                     main() !== lang,
                 }}
               >
-                {t(getLabelKey(lang))}
+                {LANGUAGE_LABELS[lang]}
               </button>
             )}
           </For>
@@ -59,11 +60,11 @@ export function LanguageSelection() {
       </div>
 
       {main() && (
-        <div class="space-y-4">
-          <label class="block text-sm font-medium text-slate-700">
+        <div class="space-y-3 sm:space-y-4">
+          <span class="block text-sm font-medium text-slate-700" id="target-language-label">
             {t('Select your target (learning) language')}
-          </label>
-          <div class="flex flex-wrap gap-2" role="group" aria-label="Target language">
+          </span>
+          <div class="flex flex-wrap gap-2 sm:gap-3" role="group" aria-labelledby="target-language-label">
             <For each={targetOptions()}>
               {(lang) => (
                 <button
@@ -76,7 +77,7 @@ export function LanguageSelection() {
                       target() !== lang,
                   }}
                 >
-                  {t(getLabelKey(lang))}
+                  {LANGUAGE_LABELS[lang]}
                 </button>
               )}
             </For>
@@ -88,7 +89,7 @@ export function LanguageSelection() {
         <button
           type="button"
           onClick={handleContinue}
-          class="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          class="w-full rounded-lg bg-primary-600 px-4 py-3 font-medium text-white transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
         >
           {t('Continue')}
         </button>

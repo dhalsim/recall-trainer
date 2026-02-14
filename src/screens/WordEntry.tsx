@@ -1,9 +1,11 @@
+import { useNavigate } from '@solidjs/router';
 import { createSignal, For, onMount } from 'solid-js';
 
 import { t } from '../i18n';
 import { LANGUAGE_LABELS } from '../lib/language-pairs';
 import type { AppLanguage, VocabEntry } from '../store';
 import { store } from '../store';
+import { daysFromTodayTo } from '../utils/date';
 
 export function WordEntry() {
   const [source, setSource] = createSignal('');
@@ -12,6 +14,12 @@ export function WordEntry() {
   const [hideMastered, setHideMastered] = createSignal(false);
   /** When set, form is in edit mode; save updates this entry. When empty, save creates a new entry. */
   const [editingEntryId, setEditingEntryId] = createSignal<string | null>(null);
+  /** ID of the entry whose details row is expanded, or null. */
+  const [expandedEntryId, setExpandedEntryId] = createSignal<string | null>(null);
+  /** Paste textarea value. */
+  const [pasteText, setPasteText] = createSignal('');
+  /** Message after paste (success or validation error). */
+  const [pasteMessage, setPasteMessage] = createSignal<{ type: 'success' | 'error'; text: string } | null>(null);
 
   let sourceRef: HTMLInputElement | undefined;
   let targetRef: HTMLInputElement | undefined;
@@ -27,8 +35,8 @@ export function WordEntry() {
   const visibleEntries = () =>
     hideMastered() ? entries().filter((e) => !(e.source.correct && e.target.correct)) : entries();
 
-  const sourceLabel = () => t(LANGUAGE_LABELS[mainLang()]);
-  const targetLabel = () => t(LANGUAGE_LABELS[targetLang()]);
+  const sourceLabel = () => LANGUAGE_LABELS[mainLang()];
+  const targetLabel = () => LANGUAGE_LABELS[targetLang()];
 
   const saveEntry = (): boolean => {
     const s = (sourceRef?.value ?? '').trim();
@@ -69,7 +77,12 @@ export function WordEntry() {
     return true;
   };
 
-  const handleBack = () => store.goToModeSelection();
+  const navigate = useNavigate();
+
+  const handleBack = () => {
+    store.goToModeSelection();
+    navigate('/mode');
+  };
 
   const handleSourceKeyDown = (e: KeyboardEvent) => {
     if (e.keyCode === 229) {
@@ -139,56 +152,198 @@ export function WordEntry() {
   const toggleCorrect = (id: string, currentlyMastered: boolean) =>
     store.setEntryCorrect(id, !currentlyMastered);
 
+  /** Format next review for display: "Due today", "Due tomorrow", or "Due in X days". */
+  const formatDueLabel = (nextReviewAt: number): string => {
+    const days = daysFromTodayTo(nextReviewAt);
+    if (days <= 0) {
+      return t('Due today');
+    }
+    if (days === 1) {
+      return t('Due tomorrow');
+    }
+    return t('Due in {{count}} days', { count: days });
+  };
+
+  /**
+   * Parse pasted text: one pair per line, format "source | target".
+   * Returns { added, skipped }. Empty lines are ignored; lines without valid source and target count as skipped.
+   */
+  const parsePaste = (text: string): { pairs: [string, string][]; skipped: number } => {
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const pairs: [string, string][] = [];
+    let skipped = 0;
+    for (const line of lines) {
+      const sep = line.includes('|') ? line.indexOf('|') : -1;
+      if (sep === -1) {
+        skipped += 1;
+        continue;
+      }
+      const sourcePart = line.slice(0, sep).trim();
+      const targetPart = line.slice(sep + 1).trim();
+      if (!sourcePart || !targetPart) {
+        skipped += 1;
+        continue;
+      }
+      pairs.push([sourcePart, targetPart]);
+    }
+    return { pairs, skipped };
+  };
+
+  const handlePaste = () => {
+    const text = pasteText().trim();
+    setPasteMessage(null);
+    if (!text) {
+      setPasteMessage({
+        type: 'error',
+        text: t('No valid pairs in paste. Use format: source | target (one per line).'),
+      });
+      return;
+    }
+    const { pairs, skipped } = parsePaste(text);
+    if (pairs.length === 0) {
+      setPasteMessage({
+        type: 'error',
+        text: t('No valid pairs in paste. Use format: source | target (one per line).'),
+      });
+      return;
+    }
+    for (const [s, tgt] of pairs) {
+      store.addEntry(s, tgt);
+    }
+    setPasteText('');
+    const addedMsg =
+      pairs.length === 1
+        ? t('Added {{count}} pair.', { count: 1 })
+        : t('Added {{count}} pairs.', { count: pairs.length });
+    const skippedMsg =
+      skipped === 0
+        ? ''
+        : skipped === 1
+          ? t('Skipped {{count}} invalid line (missing or empty source or target).', { count: 1 })
+          : t('Skipped {{count}} invalid lines (missing or empty source or target).', {
+              count: skipped,
+            });
+    setPasteMessage({
+      type: 'success',
+      text: skippedMsg ? `${addedMsg} ${skippedMsg}` : addedMsg,
+    });
+  };
+
+  const toggleExpanded = (id: string) => {
+    setExpandedEntryId((prev) => (prev === id ? null : id));
+  };
+
   return (
-    <div class="mx-auto max-w-2xl space-y-6">
+    <div class="mx-auto max-w-2xl space-y-6 sm:space-y-8">
       <button
         type="button"
         onClick={handleBack}
-        class="text-sm font-medium text-blue-600 hover:text-blue-800 focus:outline-none focus:underline"
+        class="-ml-1 text-sm font-medium text-primary-600 hover:text-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded"
       >
         ← {t('Back')}
       </button>
 
-      <h1 class="text-2xl font-bold text-slate-900">Recall Trainer</h1>
+      <h1 class="text-2xl font-bold text-slate-900 sm:text-3xl">Recall Trainer</h1>
       <p class="text-slate-600">{t('Enter words in both columns to add a pair.')}</p>
 
       <div class="space-y-2">
-        <div class="grid grid-cols-[1fr_1fr] gap-2">
-          <input
-            ref={sourceRef}
-            id="source-input"
-            type="text"
-            autocomplete="off"
-            enterkeyhint="next"
-            lang={mainLang()}
-            placeholder={sourceLabel()}
-            value={source()}
-            onInput={handleSourceInput}
-            onKeyDown={handleSourceKeyDown}
-            class="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-800 placeholder-slate-400 transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            classList={{
-              'border-error-500': error() && !source().trim(),
-            }}
-          />
-          <input
-            ref={targetRef}
-            id="target-input"
-            type="text"
-            autocomplete="off"
-            enterkeyhint="done"
-            lang={targetLang()}
-            placeholder={targetLabel()}
-            value={target()}
-            onInput={handleTargetInput}
-            onKeyDown={handleTargetKeyDown}
-            class="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-800 placeholder-slate-400 transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            classList={{
-              'border-error-500': error() && !target().trim(),
-            }}
-          />
+        <div class="grid grid-cols-[1fr_1fr] gap-3 sm:gap-4">
+          <div class="space-y-1">
+            <label for="source-input" class="block text-sm font-medium text-slate-700">
+              {sourceLabel()}
+            </label>
+            <input
+              ref={sourceRef}
+              id="source-input"
+              type="text"
+              autocomplete="off"
+              enterkeyhint="next"
+              lang={mainLang()}
+              placeholder={sourceLabel()}
+              value={source()}
+              onInput={handleSourceInput}
+              onKeyDown={handleSourceKeyDown}
+              aria-invalid={error() && !source().trim()}
+              aria-describedby={error() ? 'source-target-error' : undefined}
+              class="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2.5 text-slate-800 placeholder-slate-400 transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+              classList={{
+                'border-error-500': error() && !source().trim(),
+              }}
+            />
+          </div>
+          <div class="space-y-1">
+            <label for="target-input" class="block text-sm font-medium text-slate-700">
+              {targetLabel()}
+            </label>
+            <input
+              ref={targetRef}
+              id="target-input"
+              type="text"
+              autocomplete="off"
+              enterkeyhint="done"
+              lang={targetLang()}
+              placeholder={targetLabel()}
+              value={target()}
+              onInput={handleTargetInput}
+              onKeyDown={handleTargetKeyDown}
+              aria-invalid={error() && !target().trim()}
+              aria-describedby={error() ? 'source-target-error' : undefined}
+              class="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2.5 text-slate-800 placeholder-slate-400 transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+              classList={{
+                'border-error-500': error() && !target().trim(),
+              }}
+            />
+          </div>
         </div>
         {error() && (
-          <p class="text-sm text-error-500">{t('Both source and target are required.')}</p>
+          <p id="source-target-error" class="text-sm text-error-500" role="alert">
+            {t('Both source and target are required.')}
+          </p>
+        )}
+      </div>
+
+      <div class="space-y-2">
+        <h2 class="text-lg font-semibold text-slate-800">{t('Paste vocabulary')}</h2>
+        <label for="paste-vocabulary" class="block text-sm text-slate-600">
+          {t('Paste one pair per line in the form: source | target. Empty lines are ignored.')}
+        </label>
+        <textarea
+          id="paste-vocabulary"
+          value={pasteText()}
+          onInput={(e) => {
+            setPasteText(e.currentTarget.value);
+            setPasteMessage(null);
+          }}
+          placeholder="hello | こんにちは"
+          rows={4}
+          aria-invalid={pasteMessage()?.type === 'error'}
+          aria-describedby={pasteMessage() ? 'paste-message' : undefined}
+          class="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2.5 text-slate-800 placeholder-slate-400 transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+          classList={{
+            'border-error-500': pasteMessage()?.type === 'error',
+          }}
+        />
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handlePaste}
+            class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            {t('Add from paste')}
+          </button>
+        </div>
+        {pasteMessage() && (
+          <p
+            id="paste-message"
+            role="alert"
+            class="text-sm"
+            classList={{
+              'text-success-500': pasteMessage()?.type === 'success',
+              'text-error-500': pasteMessage()?.type === 'error',
+            }}
+          >
+            {pasteMessage()?.text}
+          </p>
         )}
       </div>
 
@@ -208,6 +363,13 @@ export function WordEntry() {
             <table class="w-full border-collapse">
               <thead>
                 <tr class="bg-slate-50">
+                  <th
+                    scope="col"
+                    class="w-10 px-1 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500"
+                    aria-label={t('Show details')}
+                  >
+                    <span class="sr-only">{t('Show details')}</span>
+                  </th>
                   <th
                     scope="col"
                     class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500"
@@ -230,12 +392,6 @@ export function WordEntry() {
                     scope="col"
                     class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500"
                   >
-                    {t('Error count')}
-                  </th>
-                  <th
-                    scope="col"
-                    class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide text-slate-500"
-                  >
                     {t('Edit')}
                   </th>
                   <th
@@ -248,65 +404,140 @@ export function WordEntry() {
               </thead>
               <tbody>
                 <For each={visibleEntries()}>
-                  {(entry) => (
-                    <tr class="border-t border-slate-200 bg-white">
-                      <td class="px-3 py-2 text-center text-slate-800">{entry.source.text}</td>
-                      <td class="px-3 py-2 text-center text-slate-800">{entry.target.text}</td>
-                      <td class="px-3 py-2">
-                        <div class="flex justify-center">
-                          <button
-                            type="button"
-                            onClick={() => toggleCorrect(entry.id, isMastered(entry))}
-                          aria-label={
-                            isMastered(entry) ? 'Mark as not mastered' : 'Mark as mastered'
-                          }
-                          class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-                          classList={{
-                            'border-success-500 bg-success-500 text-white': isMastered(entry),
-                            'border-slate-300 bg-white text-slate-400 hover:border-slate-400':
-                              !isMastered(entry),
-                          }}
-                        >
-                          <span
-                            class="text-sm font-bold"
-                            classList={{ invisible: !isMastered(entry) }}
-                            aria-hidden="true"
-                          >
-                            ✓
-                          </span>
-                        </button>
-                        </div>
-                      </td>
-                      <td class="px-3 py-2 text-center">
-                        <span
-                          class="text-xs font-medium tabular-nums text-slate-500"
-                          title={t('Error count')}
-                        >
-                          {entry.source.errorCount + entry.target.errorCount}×
-                        </span>
-                      </td>
-                      <td class="px-3 py-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleEdit(entry)}
-                          aria-label={t('Edit')}
-                          class="rounded px-2 py-1 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          ✎
-                        </button>
-                      </td>
-                      <td class="px-3 py-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleRemove(entry.id)}
-                          aria-label="Remove"
-                          class="rounded px-2 py-1 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-error-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          ✕
-                        </button>
-                      </td>
-                    </tr>
-                  )}
+                  {(entry) => {
+                    const expanded = () => expandedEntryId() === entry.id;
+                    return (
+                      <>
+                        <tr class="border-t border-slate-200 bg-white">
+                          <td class="w-10 px-1 py-2 align-middle">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpanded(entry.id)}
+                              aria-label={expanded() ? t('Hide details') : t('Show details')}
+                              aria-expanded={expanded()}
+                              class="flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-500 transition-transform hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              classList={{ 'rotate-90': expanded() }}
+                            >
+                              <span aria-hidden="true">›</span>
+                            </button>
+                          </td>
+                          <td class="px-3 py-2 text-center text-slate-800">{entry.source.text}</td>
+                          <td class="px-3 py-2 text-center text-slate-800">{entry.target.text}</td>
+                          <td class="px-3 py-2">
+                            <div class="flex justify-center">
+                              <button
+                                type="button"
+                                onClick={() => toggleCorrect(entry.id, isMastered(entry))}
+                                aria-label={
+                                  isMastered(entry) ? 'Mark as not mastered' : 'Mark as mastered'
+                                }
+                                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                                classList={{
+                                  'border-success-500 bg-success-500 text-white': isMastered(entry),
+                                  'border-slate-300 bg-white text-slate-400 hover:border-slate-400':
+                                    !isMastered(entry),
+                                }}
+                              >
+                                <span
+                                  class="text-sm font-bold"
+                                  classList={{ invisible: !isMastered(entry) }}
+                                  aria-hidden="true"
+                                >
+                                  ✓
+                                </span>
+                              </button>
+                            </div>
+                          </td>
+                          <td class="px-3 py-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleEdit(entry)}
+                              aria-label={t('Edit')}
+                              class="rounded px-2 py-1 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              ✎
+                            </button>
+                          </td>
+                          <td class="px-3 py-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleRemove(entry.id)}
+                              aria-label="Remove"
+                              class="rounded px-2 py-1 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-error-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              ✕
+                            </button>
+                          </td>
+                        </tr>
+                        {expanded() && (
+                          <tr class="border-t border-slate-200 bg-slate-50/80">
+                            <td colspan="6" class="px-3 py-3">
+                              <table class="w-full max-w-md border-collapse rounded border border-slate-200 bg-white text-sm">
+                                <thead>
+                                  <tr class="bg-slate-100">
+                                    <th
+                                      scope="col"
+                                      class="px-3 py-1.5 text-left text-xs font-medium text-slate-600"
+                                    >
+                                      {t('Direction')}
+                                    </th>
+                                    <th
+                                      scope="col"
+                                      class="px-3 py-1.5 text-left text-xs font-medium text-slate-600"
+                                    >
+                                      {t('Next review')}
+                                    </th>
+                                    <th
+                                      scope="col"
+                                      class="px-3 py-1.5 text-center text-xs font-medium text-slate-600"
+                                    >
+                                      {t('Level')}
+                                    </th>
+                                    <th
+                                      scope="col"
+                                      class="px-3 py-1.5 text-center text-xs font-medium text-slate-600"
+                                    >
+                                      {t('Errors')}
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr class="border-t border-slate-200">
+                                    <td class="px-3 py-1.5 text-slate-700">
+                                      {t('Source → Target')}
+                                    </td>
+                                    <td class="px-3 py-1.5 text-slate-700">
+                                      {formatDueLabel(entry.source.nextReviewAt)}
+                                    </td>
+                                    <td class="px-3 py-1.5 text-center tabular-nums text-slate-700">
+                                      {entry.source.level}
+                                    </td>
+                                    <td class="px-3 py-1.5 text-center tabular-nums text-slate-700">
+                                      {entry.source.errorCount}
+                                    </td>
+                                  </tr>
+                                  <tr class="border-t border-slate-200">
+                                    <td class="px-3 py-1.5 text-slate-700">
+                                      {t('Target → Source')}
+                                    </td>
+                                    <td class="px-3 py-1.5 text-slate-700">
+                                      {formatDueLabel(entry.target.nextReviewAt)}
+                                    </td>
+                                    <td class="px-3 py-1.5 text-center tabular-nums text-slate-700">
+                                      {entry.target.level}
+                                    </td>
+                                    <td class="px-3 py-1.5 text-center tabular-nums text-slate-700">
+                                      {entry.target.errorCount}
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  }}
                 </For>
               </tbody>
             </table>

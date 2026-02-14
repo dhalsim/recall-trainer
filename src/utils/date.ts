@@ -51,3 +51,15 @@ export function addDaysFromToday(days: number): number {
 
   return d.getTime();
 }
+
+/**
+ * Number of calendar days from today (start of day) to the given timestamp's day.
+ * Uses clock.getCurrentTime() so simulation mode is respected.
+ */
+export function daysFromTodayTo(ts: number): number {
+  const todayStart = startOfToday();
+  const targetStart = startOfDay(ts);
+  const diffMs = targetStart - todayStart;
+
+  return Math.round(diffMs / (24 * 60 * 60 * 1000));
+}

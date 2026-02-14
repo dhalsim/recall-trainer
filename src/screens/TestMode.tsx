@@ -1,3 +1,4 @@
+import { useNavigate } from '@solidjs/router';
 import { createEffect, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
 
 import { t } from '../i18n';
@@ -301,9 +302,12 @@ export function TestMode() {
     store.setTestSession(buildSnapshot('question'));
   };
 
+  const navigate = useNavigate();
+
   const handleBack = () => {
     store.clearTestSession();
     store.goToModeSelection();
+    navigate('/mode');
   };
 
   const currentEntry = () => currentRoundQuestions()[currentIndex()];
@@ -359,7 +363,10 @@ export function TestMode() {
             </p>
             <button
               type="button"
-              onClick={() => store.setScreen('word_entry')}
+              onClick={() => {
+                store.setScreen('word_entry');
+                navigate('/words');
+              }}
               class="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               {t('Enter words I struggle with')}
@@ -427,7 +434,7 @@ export function TestMode() {
               <div class="rounded-lg border-2 border-slate-200 bg-white p-4">
                 <p class="text-lg font-medium text-slate-800">{promptText()}</p>
               </div>
-              <div>
+              <div class="space-y-1">
                 <label for="test-answer" class="block text-sm font-medium text-slate-700">
                   {t('Enter your answer.')}
                 </label>
@@ -444,7 +451,7 @@ export function TestMode() {
                       submitAnswer();
                     }
                   }}
-                  class="mt-1 w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2 text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  class="w-full rounded-lg border-2 border-slate-200 bg-white px-3 py-2.5 text-slate-800 transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
                 />
               </div>
               <button
