@@ -71,5 +71,22 @@
   "Due tomorrow": "Due tomorrow",
   "Due in {{count}} days": "Due in {{count}} days",
   "Show details": "Show details",
-  "Hide details": "Hide details"
+  "Hide details": "Hide details",
+  "Waiting for connection…": "Waiting for connection…",
+  "Scan the QR code or click to copy": "Scan the QR code or click to copy",
+  "Hide settings": "Hide settings",
+  "Refresh": "Refresh",
+  "Help": "Help",
+  "Relay URL": "Relay URL",
+  "Relay changed. Click Refresh to update the QR code.": "Relay changed. Click Refresh to update the QR code.",
+  "Encryption format not recognized": "Encryption format not recognized",
+  "Invalid response format": "Invalid response format",
+  "Connection secret mismatch": "Connection secret mismatch",
+  "Login failed": "Login failed",
+  "Connected with Nostr Connect": "Connected with Nostr Connect",
+  "Copied": "Copied",
+  "Sign in with Nostr": "Sign in with Nostr",
+  "Log out": "Log out",
+  "Connect": "Connect",
+  "Profile": "Profile"
 }

@@ -1,4 +1,4 @@
-import { createEffect, createSignal, Show } from 'solid-js';
+import { createEffect, createSignal, Show, For } from 'solid-js';
 
 import { t } from '../i18n';
 import { LANGUAGES, LANGUAGE_LABELS } from '../lib/language-pairs';
@@ -18,6 +18,7 @@ interface SettingsDialogProps {
 export function SettingsDialog(props: SettingsDialogProps) {
   const [localQuestions, setLocalQuestions] = createSignal(store.state().questionsPerSession);
   const simulationMode = () => store.state().simulationMode;
+
   const effectiveAppLocale = (): AppLanguage =>
     store.state().appLocale ?? store.state().mainLanguage ?? 'en';
 
@@ -52,24 +53,28 @@ export function SettingsDialog(props: SettingsDialogProps) {
           </h2>
           <div class="mt-4 space-y-4">
             <div>
-              <p class="block text-sm font-medium text-slate-700">
-                {t('Application language')}
-              </p>
-              <div class="mt-2 flex flex-wrap gap-2" role="group" aria-label={t('Application language')}>
-                {LANGUAGES.map((lang) => (
-                  <button
-                    type="button"
-                    onClick={() => store.setAppLocale(lang)}
-                    class="rounded-lg border px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                    classList={{
-                      'border-blue-500 bg-blue-50 text-blue-700': effectiveAppLocale() === lang,
-                      'border-slate-300 bg-white text-slate-700 hover:bg-slate-50':
-                        effectiveAppLocale() !== lang,
-                    }}
-                  >
-                    {LANGUAGE_LABELS[lang]}
-                  </button>
-                ))}
+              <p class="block text-sm font-medium text-slate-700">{t('Application language')}</p>
+              <div
+                class="mt-2 flex flex-wrap gap-2"
+                role="group"
+                aria-label={t('Application language')}
+              >
+                <For each={LANGUAGES}>
+                  {(lang) => (
+                    <button
+                      type="button"
+                      onClick={() => store.setAppLocale(lang)}
+                      class="rounded-lg border px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                      classList={{
+                        'border-blue-500 bg-blue-50 text-blue-700': effectiveAppLocale() === lang,
+                        'border-slate-300 bg-white text-slate-700 hover:bg-slate-50':
+                          effectiveAppLocale() !== lang,
+                      }}
+                    >
+                      {LANGUAGE_LABELS[lang]}
+                    </button>
+                  )}
+                </For>
               </div>
             </div>
             <div>

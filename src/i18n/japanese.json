@@ -71,5 +71,22 @@
   "Due tomorrow": "明日",
   "Due in {{count}} days": "{{count}} 日後",
   "Show details": "詳細を表示",
-  "Hide details": "詳細を隠す"
+  "Hide details": "詳細を隠す",
+  "Waiting for connection…": "接続を待っています…",
+  "Scan the QR code or click to copy": "QRコードをスキャンするか、クリックしてコピー",
+  "Hide settings": "設定を隠す",
+  "Refresh": "更新",
+  "Help": "ヘルプ",
+  "Relay URL": "リレー URL",
+  "Relay changed. Click Refresh to update the QR code.": "リレーを変更しました。QRコードを更新するには「更新」をクリックしてください。",
+  "Encryption format not recognized": "暗号形式が認識されません",
+  "Invalid response format": "無効な応答形式です",
+  "Connection secret mismatch": "接続シークレットが一致しません",
+  "Login failed": "ログインに失敗しました",
+  "Connected with Nostr Connect": "Nostr Connect で接続しました",
+  "Copied": "コピーしました",
+  "Sign in with Nostr": "Nostr でサインイン",
+  "Log out": "ログアウト",
+  "Connect": "接続",
+  "Profile": "プロフィール"
 }

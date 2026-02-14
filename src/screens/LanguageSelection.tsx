@@ -36,7 +36,11 @@ export function LanguageSelection() {
         <span class="block text-sm font-medium text-slate-700" id="main-language-label">
           {t('Select your main language for the app')}
         </span>
-        <div class="flex flex-wrap gap-2 sm:gap-3" role="group" aria-labelledby="main-language-label">
+        <div
+          class="flex flex-wrap gap-2 sm:gap-3"
+          role="group"
+          aria-labelledby="main-language-label"
+        >
           <For each={['en', 'ja', 'tr'] as AppLanguage[]}>
             {(lang) => (
               <button
@@ -64,7 +68,11 @@ export function LanguageSelection() {
           <span class="block text-sm font-medium text-slate-700" id="target-language-label">
             {t('Select your target (learning) language')}
           </span>
-          <div class="flex flex-wrap gap-2 sm:gap-3" role="group" aria-labelledby="target-language-label">
+          <div
+            class="flex flex-wrap gap-2 sm:gap-3"
+            role="group"
+            aria-labelledby="target-language-label"
+          >
             <For each={targetOptions()}>
               {(lang) => (
                 <button

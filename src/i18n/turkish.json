@@ -71,5 +71,22 @@
   "Due tomorrow": "Yarın",
   "Due in {{count}} days": "{{count}} gün sonra",
   "Show details": "Detayları göster",
-  "Hide details": "Detayları gizle"
+  "Hide details": "Detayları gizle",
+  "Waiting for connection…": "Bağlantı bekleniyor…",
+  "Scan the QR code or click to copy": "QR kodu tarayın veya kopyalamak için tıklayın",
+  "Hide settings": "Ayarları gizle",
+  "Refresh": "Yenile",
+  "Help": "Yardım",
+  "Relay URL": "Relay URL",
+  "Relay changed. Click Refresh to update the QR code.": "Relay değişti. QR kodu güncellemek için Yenile'ye tıklayın.",
+  "Encryption format not recognized": "Şifreleme formatı tanınmadı",
+  "Invalid response format": "Geçersiz yanıt formatı",
+  "Connection secret mismatch": "Bağlantı parolası eşleşmiyor",
+  "Login failed": "Giriş başarısız",
+  "Connected with Nostr Connect": "Nostr Connect ile bağlandı",
+  "Copied": "Kopyalandı",
+  "Sign in with Nostr": "Nostr ile giriş yap",
+  "Log out": "Çıkış yap",
+  "Connect": "Bağlan",
+  "Profile": "Profil"
 }

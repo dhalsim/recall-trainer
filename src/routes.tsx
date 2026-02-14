@@ -1,7 +1,6 @@
 import type { RouteSectionProps } from '@solidjs/router';
-import { Show } from 'solid-js';
-
 import { Navigate } from '@solidjs/router';
+import { Show } from 'solid-js';
 
 import { AppLayout } from './components/AppLayout';
 import { LanguageSelection } from './screens/LanguageSelection';
@@ -62,4 +61,3 @@ export function TestRoute() {
 export function RootLayout(props: RouteSectionProps) {
   return <AppLayout>{props.children}</AppLayout>;
 }
-

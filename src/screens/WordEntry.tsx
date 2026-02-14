@@ -18,8 +18,12 @@ export function WordEntry() {
   const [expandedEntryId, setExpandedEntryId] = createSignal<string | null>(null);
   /** Paste textarea value. */
   const [pasteText, setPasteText] = createSignal('');
+
   /** Message after paste (success or validation error). */
-  const [pasteMessage, setPasteMessage] = createSignal<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [pasteMessage, setPasteMessage] = createSignal<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   let sourceRef: HTMLInputElement | undefined;
   let targetRef: HTMLInputElement | undefined;
@@ -142,6 +146,7 @@ export function WordEntry() {
     setSource(entry.source.text);
     setTarget(entry.target.text);
     setError(false);
+
     requestAnimationFrame(() => {
       sourceRef?.focus();
     });
@@ -155,12 +160,15 @@ export function WordEntry() {
   /** Format next review for display: "Due today", "Due tomorrow", or "Due in X days". */
   const formatDueLabel = (nextReviewAt: number): string => {
     const days = daysFromTodayTo(nextReviewAt);
+
     if (days <= 0) {
       return t('Due today');
     }
+
     if (days === 1) {
       return t('Due tomorrow');
     }
+
     return t('Due in {{count}} days', { count: days });
   };
 
@@ -169,52 +177,70 @@ export function WordEntry() {
    * Returns { added, skipped }. Empty lines are ignored; lines without valid source and target count as skipped.
    */
   const parsePaste = (text: string): { pairs: [string, string][]; skipped: number } => {
-    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
     const pairs: [string, string][] = [];
     let skipped = 0;
     for (const line of lines) {
       const sep = line.includes('|') ? line.indexOf('|') : -1;
+
       if (sep === -1) {
         skipped += 1;
         continue;
       }
+
       const sourcePart = line.slice(0, sep).trim();
       const targetPart = line.slice(sep + 1).trim();
+
       if (!sourcePart || !targetPart) {
         skipped += 1;
         continue;
       }
+
       pairs.push([sourcePart, targetPart]);
     }
+
     return { pairs, skipped };
   };
 
   const handlePaste = () => {
     const text = pasteText().trim();
     setPasteMessage(null);
+
     if (!text) {
       setPasteMessage({
         type: 'error',
         text: t('No valid pairs in paste. Use format: source | target (one per line).'),
       });
+
       return;
     }
+
     const { pairs, skipped } = parsePaste(text);
+
     if (pairs.length === 0) {
       setPasteMessage({
         type: 'error',
         text: t('No valid pairs in paste. Use format: source | target (one per line).'),
       });
+
       return;
     }
+
     for (const [s, tgt] of pairs) {
       store.addEntry(s, tgt);
     }
+
     setPasteText('');
+
     const addedMsg =
       pairs.length === 1
         ? t('Added {{count}} pair.', { count: 1 })
         : t('Added {{count}} pairs.', { count: pairs.length });
+
     const skippedMsg =
       skipped === 0
         ? ''
@@ -223,6 +249,7 @@ export function WordEntry() {
           : t('Skipped {{count}} invalid lines (missing or empty source or target).', {
               count: skipped,
             });
+
     setPasteMessage({
       type: 'success',
       text: skippedMsg ? `${addedMsg} ${skippedMsg}` : addedMsg,
@@ -406,6 +433,7 @@ export function WordEntry() {
                 <For each={visibleEntries()}>
                   {(entry) => {
                     const expanded = () => expandedEntryId() === entry.id;
+
                     return (
                       <>
                         <tr class="border-t border-slate-200 bg-white">

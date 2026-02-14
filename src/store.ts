@@ -1,6 +1,7 @@
 import { createSignal } from 'solid-js';
 
 import { setLocale } from './i18n';
+import type { AuthLoginState } from './lib/nostr/types';
 import { setSimulationTime } from './utils/clock';
 import { addDaysFromToday, endOfToday, realStartOfToday, startOfToday } from './utils/date';
 
@@ -171,6 +172,8 @@ export interface AppState {
   simulationMode: boolean;
   /** Start-of-day timestamp for the simulated "today". */
   simulationDate: number | null;
+  /** Nostr auth state (optional). Persisted; restored on load. */
+  authLoginState: AuthLoginState | null;
 }
 
 const defaultState: AppState = {
@@ -184,6 +187,7 @@ const defaultState: AppState = {
   questionsPerSession: QUESTIONS_PER_SESSION_DEFAULT,
   simulationMode: false,
   simulationDate: null,
+  authLoginState: null,
 };
 
 function toSourceOrTarget(
@@ -297,6 +301,7 @@ function migrateV3ToV4(parsed: AppStateV3): AppState {
         : QUESTIONS_PER_SESSION_DEFAULT,
     simulationMode: false,
     simulationDate: null,
+    authLoginState: null,
   };
 }
 
@@ -395,6 +400,7 @@ function loadState(): AppState {
           : defaultState.questionsPerSession,
       simulationMode: appState.simulationMode ?? false,
       simulationDate: appState.simulationDate ?? null,
+      authLoginState: (appState as AppState).authLoginState ?? defaultState.authLoginState,
     };
 
     applyClockFromState(state);
@@ -625,6 +631,14 @@ function createStore() {
     }));
   };
 
+  const setAuthLoginState = (authLoginState: AuthLoginState | null): void => {
+    persist((prev) => ({ ...prev, authLoginState }));
+  };
+
+  const clearAuthLoginState = (): void => {
+    persist((prev) => ({ ...prev, authLoginState: null }));
+  };
+
   return {
     state,
     testSession,
@@ -646,6 +660,8 @@ function createStore() {
     setQuestionsPerSession,
     setSimulationMode,
     advanceSimulationDay,
+    setAuthLoginState,
+    clearAuthLoginState,
   };
 }
 

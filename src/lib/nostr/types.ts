@@ -1,0 +1,51 @@
+import type { EventTemplate, NostrEvent } from 'nostr-tools';
+
+export type NostrProviderMethod = 'nip07' | 'nip46' | 'nsec' | 'nostrconnect' | 'none';
+
+export type ProviderCapability = 'getRelays' | 'signEvent' | 'getPublicKey';
+
+export type SignEventParams = {
+  event: EventTemplate;
+  options?: { reason?: string };
+};
+
+export type SignEventResult = { signedEvent: NostrEvent; provider: NostrProvider };
+
+export type SignEvent = (params: SignEventParams) => Promise<SignEventResult>;
+
+export type GetPublicKeyParams = { options?: { reason?: string } };
+
+export type GetPublicKey = (params?: GetPublicKeyParams) => Promise<string | null>;
+
+export interface NostrProvider {
+  method: NostrProviderMethod;
+  isReady(): Promise<boolean>;
+  getPublicKey: GetPublicKey;
+  signEvent: SignEvent;
+  hasCapability(cap: ProviderCapability): boolean;
+  getRelays?(): Promise<unknown>;
+  dispose?(): void;
+}
+
+export interface NostrConnectData {
+  relay: string;
+  uri: string;
+  ephemeralSecret: string;
+  ephemeralPubkey: string;
+  timestamp: number;
+  connectionSecret: string;
+  remoteSignerPubkey: string | null;
+}
+
+export type LoginResult =
+  | { success: true; provider: NostrProvider }
+  | { success: false; provider: null };
+
+export type AuthIntent = 'log_in' | 'read_pubkey' | 'sign_event';
+
+/** Persisted auth state (e.g. in store). */
+export type AuthLoginState = {
+  method: NostrProviderMethod;
+  loggedIn: boolean;
+  data?: NostrConnectData;
+};
