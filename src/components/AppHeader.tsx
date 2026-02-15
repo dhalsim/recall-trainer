@@ -1,5 +1,6 @@
 import { createSignal, onCleanup, onMount, Show } from 'solid-js';
 
+import { SyncDataDialog } from './SyncDataDialog';
 import { useNostrAuth } from '../contexts/NostrAuthContext';
 import { t } from '../i18n';
 
@@ -11,6 +12,7 @@ interface AppHeaderProps {
 export function AppHeader(props: AppHeaderProps) {
   const { isLoggedIn, logout } = useNostrAuth();
   const [dropdownOpen, setDropdownOpen] = createSignal(false);
+  const [syncDialogOpen, setSyncDialogOpen] = createSignal(false);
 
   let dropdownRef: HTMLDivElement | undefined;
 
@@ -31,6 +33,11 @@ export function AppHeader(props: AppHeaderProps) {
   const handleConnect = () => {
     setDropdownOpen(false);
     props.onOpenConnect();
+  };
+
+  const handleSyncData = () => {
+    setDropdownOpen(false);
+    setSyncDialogOpen(true);
   };
 
   const handleSignOut = () => {
@@ -75,14 +82,24 @@ export function AppHeader(props: AppHeaderProps) {
             <Show
               when={!isLoggedIn()}
               fallback={
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={handleSignOut}
-                  class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
-                >
-                  {t('Log out')}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleSyncData}
+                    class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
+                  >
+                    {t('Sync Data')}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleSignOut}
+                    class="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
+                  >
+                    {t('Log out')}
+                  </button>
+                </>
               }
             >
               <button
@@ -121,6 +138,10 @@ export function AppHeader(props: AppHeaderProps) {
           <circle cx="12" cy="12" r="3" />
         </svg>
       </button>
+      <SyncDataDialog
+        open={syncDialogOpen()}
+        onClose={() => setSyncDialogOpen(false)}
+      />
     </div>
   );
 }

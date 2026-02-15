@@ -138,10 +138,11 @@ export function getRelays(pubkey: string): Nip65Relays | null {
 }
 
 /**
- * Clear relay data (signal + cache). Call on logout.
+ * Clear in-memory relay data only (signal). Does not remove localStorage cache.
+ * Call on logout so next login can rehydrate from cache.
  */
 export function clearRelays(): void {
-  setRelays(null);
+  setNip65Signal(null);
 }
 
 /**

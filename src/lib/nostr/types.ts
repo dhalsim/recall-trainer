@@ -28,7 +28,7 @@ export interface NostrProvider {
 }
 
 export interface NostrConnectData {
-  relay: string;
+  relays: string[];
   uri: string;
   ephemeralSecret: string;
   ephemeralPubkey: string;

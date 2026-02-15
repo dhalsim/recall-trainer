@@ -78,8 +78,11 @@
   "Hide settings": "Hide settings",
   "Refresh": "Refresh",
   "Help": "Help",
+  "Add at least one relay URL": "Add at least one relay URL",
+  "Add relay": "Add relay",
   "Relay URL": "Relay URL",
   "Relay changed. Click Refresh to update the QR code.": "Relay changed. Click Refresh to update the QR code.",
+  "Remove relay": "Remove relay",
   "Encryption format not recognized": "Encryption format not recognized",
   "Invalid response format": "Invalid response format",
   "Connection secret mismatch": "Connection secret mismatch",
@@ -131,6 +134,7 @@
   "Enter your ncryptsec and password.": "Enter your ncryptsec and password.",
   "No publish relays available.": "No publish relays available.",
   "Could not get public key.": "Could not get public key.",
+  "Get public key for passkey verification": "Get public key for passkey verification",
   "Could not sign sync data.": "Could not sign sync data.",
   "Sync data publish failed.": "Sync data publish failed.",
   "Publish sync data": "Publish sync data",
@@ -157,5 +161,6 @@
   "1 hour ago": "1 hour ago",
   "{{count}} hours ago": "{{count}} hours ago",
   "1 day ago": "1 day ago",
-  "{{count}} days ago": "{{count}} days ago"
+  "{{count}} days ago": "{{count}} days ago",
+  "Sync Data": "Sync Data"
 }

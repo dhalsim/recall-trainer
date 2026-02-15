@@ -78,8 +78,11 @@
   "Hide settings": "Ayarları gizle",
   "Refresh": "Yenile",
   "Help": "Yardım",
+  "Add at least one relay URL": "En az bir röle URL'si ekleyin",
+  "Add relay": "Röle ekle",
   "Relay URL": "Relay URL",
   "Relay changed. Click Refresh to update the QR code.": "Relay değişti. QR kodu güncellemek için Yenile'ye tıklayın.",
+  "Remove relay": "Röleyi kaldır",
   "Encryption format not recognized": "Şifreleme formatı tanınmadı",
   "Invalid response format": "Geçersiz yanıt formatı",
   "Connection secret mismatch": "Bağlantı parolası eşleşmiyor",
@@ -131,6 +134,7 @@
   "Enter your ncryptsec and password.": "ncryptsec ve parolanızı girin.",
   "No publish relays available.": "Yayın yapılacak röle yok.",
   "Could not get public key.": "Genel anahtar alınamadı.",
+  "Get public key for passkey verification": "Parola anahtarı doğrulaması için genel anahtar al",
   "Could not sign sync data.": "Eşitleme verisi imzalanamadı.",
   "Sync data publish failed.": "Eşitleme verisi yayınlanamadı.",
   "Publish sync data": "Eşitleme verisini yayınla",
@@ -157,5 +161,6 @@
   "1 hour ago": "1 saat önce",
   "{{count}} hours ago": "{{count}} saat önce",
   "1 day ago": "1 gün önce",
-  "{{count}} days ago": "{{count}} gün önce"
+  "{{count}} days ago": "{{count}} gün önce",
+  "Sync Data": "Veriyi Eşitle"
 }

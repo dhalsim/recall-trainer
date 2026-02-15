@@ -1,8 +1,7 @@
 /* eslint-disable solid/no-innerhtml -- QR code SVG from qrcode library (our-generated URI only) */
-import { Relay } from 'nostr-tools';
 import { hexToBytes } from 'nostr-tools/utils';
 import qrcode from 'qrcode';
-import { onCleanup, onMount, Show } from 'solid-js';
+import { For, onCleanup, onMount, Show } from 'solid-js';
 import { createSignal } from 'solid-js';
 
 import { useNostrAuth } from '../contexts/NostrAuthContext';
@@ -13,6 +12,7 @@ import {
   generateNostrConnectUri,
   type NostrConnectData,
 } from '../lib/nostr/NostrConnectProvider';
+import { DEFAULT_WRITE_RELAYS, pool } from '../utils/nostr';
 import { createPasskeyCredentials, isPasskeySupported } from '../lib/nostr/PasskeySignerProvider';
 import { createPasswordProtectedKeypair } from '../lib/nostr/PasswordSignerProvider';
 import { store } from '../store';
@@ -27,8 +27,6 @@ interface NostrConnectAuthProps {
   }) => void;
   onError: (error: string) => void;
 }
-
-const DEFAULT_RELAY = 'wss://relay.nsec.app';
 
 function isAndroid(): boolean {
   if (typeof navigator === 'undefined') {
@@ -70,7 +68,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   const [generatedUri, setGeneratedUri] = createSignal('');
   const [qrSvg, setQrSvg] = createSignal('');
   const [isQrLoading, setIsQrLoading] = createSignal(false);
-  const [relay, setRelay] = createSignal(DEFAULT_RELAY);
+  const [relays, setRelays] = createSignal<string[]>([...DEFAULT_WRITE_RELAYS]);
   const [isWaitingForConnection, setIsWaitingForConnection] = createSignal(false);
   const [showRelayInput, setShowRelayInput] = createSignal(false);
   const [showCopied, setShowCopied] = createSignal(false);
@@ -108,66 +106,67 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   }
 
   function startSubscription(ephemeralData: NostrConnectData) {
-    const r = new Relay(ephemeralData.relay);
+    const relayList = ephemeralData.relays.filter((u) => u.trim().length > 0);
+    
+    if (relayList.length === 0) {
+      return;
+    }
 
-    r.connect().then(() => {
-      const sub = r.subscribe(
-        [
-          {
-            kinds: [24133],
-            '#p': [ephemeralData.ephemeralPubkey],
-            since: ephemeralData.timestamp,
-            limit: 1,
-          },
-        ],
-        {
-          onevent(evt) {
-            const ephemeralSecret = hexToBytes(ephemeralData.ephemeralSecret);
+    const sub = pool.subscribe(
+      relayList,
+      {
+        kinds: [24133],
+        '#p': [ephemeralData.ephemeralPubkey],
+        since: ephemeralData.timestamp,
+        limit: 1,
+      },
+      {
+        onevent(evt) {
+          const ephemeralSecret = hexToBytes(ephemeralData.ephemeralSecret);
 
-            const decrypted = decryptContent(evt.content, evt.pubkey, ephemeralSecret);
+          const decrypted = decryptContent(evt.content, evt.pubkey, ephemeralSecret);
 
-            if (!decrypted) {
-              props.onError(t('Encryption format not recognized'));
+          if (!decrypted) {
+            props.onError(t('Encryption format not recognized'));
 
-              return;
+            return;
+          }
+
+          let responseData: { id?: string; result?: string; error?: string };
+
+          try {
+            responseData = JSON.parse(decrypted);
+          } catch {
+            props.onError(t('Invalid response format'));
+
+            return;
+          }
+
+          const responseSecret = responseData.result;
+
+          if (responseSecret !== ephemeralData.connectionSecret) {
+            props.onError(t('Connection secret mismatch'));
+
+            return;
+          }
+
+          ephemeralData.remoteSignerPubkey = evt.pubkey;
+
+          /* eslint-disable-next-line solid/reactivity -- async relay callback; state updates on result */
+          void loginWithNostrConnect(ephemeralData).then((result) => {
+            if (result.success) {
+              setCurrentSubscription(null);
+              sub.close();
+              props.onSuccess(result);
+            } else {
+              props.onError(t('Login failed'));
             }
-
-            let responseData: { id?: string; result?: string; error?: string };
-
-            try {
-              responseData = JSON.parse(decrypted);
-            } catch {
-              props.onError(t('Invalid response format'));
-
-              return;
-            }
-
-            const responseSecret = responseData.result;
-
-            if (responseSecret !== ephemeralData.connectionSecret) {
-              props.onError(t('Connection secret mismatch'));
-
-              return;
-            }
-
-            ephemeralData.remoteSignerPubkey = evt.pubkey;
-
-            /* eslint-disable-next-line solid/reactivity -- async relay callback; state updates on result */
-            void loginWithNostrConnect(ephemeralData).then((result) => {
-              if (result.success) {
-                setCurrentSubscription(null);
-                sub.close();
-                props.onSuccess(result);
-              } else {
-                props.onError(t('Login failed'));
-              }
-            });
-          },
+          });
         },
-      );
+      },
+    );
 
-      setCurrentSubscription(sub);
-    });
+    setCurrentSubscription(sub);
   }
 
   async function refresh() {
@@ -179,8 +178,16 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
     }
 
     setIsTyping(false);
-    const r = relay();
-    const { uri, ephemeralData } = generateNostrConnectUri(r);
+    const relayList = relays().filter((u) => u.trim().length > 0);
+
+    if (relayList.length === 0) {
+      setRelays([...DEFAULT_WRITE_RELAYS]);
+      props.onError(t('Add at least one relay URL'));
+
+      return;
+    }
+
+    const { uri, ephemeralData } = generateNostrConnectUri(relayList);
 
     setGeneratedUri(uri);
     setIsWaitingForConnection(true);
@@ -189,18 +196,51 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
     startSubscription(ephemeralData);
   }
 
-  function handleRelayChange(newRelay: string) {
-    setRelay(newRelay);
+  function setRelayAt(index: number, value: string) {
+    setRelays((prev) => {
+      const next = [...prev];
+      next[index] = value;
+
+      return next;
+    });
+    markRelaysChanged();
+  }
+
+  function removeRelay(index: number) {
+    setRelays((prev) => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((_, i) => i !== index);
+
+      return next;
+    });
+    markRelaysChanged();
+  }
+
+  function addRelay() {
+    setRelays((prev) => [...prev, '']);
     setIsTyping(true);
     setQrSvg('');
     setIsWaitingForConnection(false);
-
     const sub = currentSubscription();
-
     if (sub) {
       sub.close();
       setCurrentSubscription(null);
     }
+  }
+
+  function markRelaysChanged() {
+    setIsTyping(true);
+    setQrSvg('');
+    setIsWaitingForConnection(false);
+    const sub = currentSubscription();
+    if (sub) {
+      sub.close();
+      setCurrentSubscription(null);
+    }
+  }
+
+  function handleRelayInput(index: number, value: string) {
+    setRelayAt(index, value);
   }
 
   async function copyUri() {
@@ -368,7 +408,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
                   setPasskeyLoading(true);
                   props.onError('');
                   try {
-                    const pubkey = await getPublicKey();
+                    const pubkey = await getPublicKey({ reason: t('Get public key for passkey verification') });
                     const p = auth.provider;
 
                     if (pubkey && p) {
@@ -587,19 +627,43 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
 
           <Show when={showRelayInput()}>
             <div class="space-y-2">
-              <label for="nostrconnect-relay" class="text-sm font-medium text-slate-700">
-                {t('Relay URL')}
-              </label>
-              <div class="flex gap-2">
-                <input
-                  id="nostrconnect-relay"
-                  type="url"
-                  placeholder={DEFAULT_RELAY}
-                  value={relay()}
-                  onInput={(e) => handleRelayChange(e.currentTarget.value)}
-                  class="block w-full flex-1 rounded-lg border border-slate-300 px-3 py-2 text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
+              <div class="flex items-center justify-between">
+                <label for="nostrconnect-relay-0" class="text-sm font-medium text-slate-700">
+                  {t('Relays')}
+                </label>
+                <button
+                  type="button"
+                  onClick={addRelay}
+                  class="rounded border border-slate-300 bg-white px-2 py-1 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  {t('Add relay')}
+                </button>
               </div>
+              <ul class="flex flex-col gap-2">
+                <For each={relays()}>
+                  {(url, index) => (
+                    <li class="flex gap-2">
+                      <input
+                        id={`nostrconnect-relay-${index()}`}
+                        type="url"
+                        placeholder="wss://..."
+                        value={url}
+                        onInput={(e) => handleRelayInput(index(), e.currentTarget.value)}
+                        class="block flex-1 rounded-lg border border-slate-300 px-3 py-2 text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeRelay(index())}
+                        disabled={relays().length <= 1}
+                        class="rounded border border-slate-300 bg-white px-2 py-2 text-slate-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                        aria-label={t('Remove relay')}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  )}
+                </For>
+              </ul>
             </div>
           </Show>
         </Show>

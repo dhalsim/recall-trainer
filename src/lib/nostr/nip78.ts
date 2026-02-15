@@ -11,13 +11,17 @@ import type { GetPublicKey, SignEvent } from './types';
 /** NIP-78 sync data d-tag for this app. */
 export const NIP78_D_TAG = 'recall-trainer-sync-data';
 
-// --- Sync meta (localStorage) ---
+// --- Sync meta (localStorage, key: recall-trainer-sync-meta-${pubkey}) ---
 
-const SYNC_META_KEY = 'recall-trainer-sync-meta';
+const SYNC_META_KEY_PREFIX = 'recall-trainer-sync-meta-';
 
-function readLastSyncedAtFromStorage(): number | null {
+function getSyncMetaKey(pubkey: string): string {
+  return `${SYNC_META_KEY_PREFIX}${pubkey}`;
+}
+
+function readLastSyncedAtFromStorage(pubkey: string): number | null {
   try {
-    const raw = localStorage.getItem(SYNC_META_KEY);
+    const raw = localStorage.getItem(getSyncMetaKey(pubkey));
 
     if (!raw) {
       return null;
@@ -33,9 +37,12 @@ function readLastSyncedAtFromStorage(): number | null {
   }
 }
 
-function writeLastSyncedAtToStorage(createdAt: number): void {
+function writeLastSyncedAtToStorage(pubkey: string, createdAt: number): void {
   try {
-    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedEventCreatedAt: createdAt }));
+    localStorage.setItem(
+      getSyncMetaKey(pubkey),
+      JSON.stringify({ lastSyncedEventCreatedAt: createdAt }),
+    );
   } catch (err) {
     console.error('[nip78] Failed to save sync meta:', err);
   }
@@ -52,11 +59,8 @@ export function stateToSyncPayload(state: AppState): Nip78SyncPayload {
     mainLanguage: state.mainLanguage,
     targetLanguage: state.targetLanguage,
     languageSelectionComplete: state.languageSelectionComplete,
-    screen: state.screen,
     entries: state.entries,
     questionsPerSession: state.questionsPerSession,
-    simulationMode: state.simulationMode,
-    simulationDate: state.simulationDate,
   };
 }
 
@@ -67,22 +71,29 @@ const [relayEvent, setRelayEvent] = createSignal<{ content: string; created_at: 
   null,
 );
 
-/** When we last synced (push or pull). Hydrated from localStorage. */
-const [lastSyncedAt, setLastSyncedAt] = createSignal<number | null>(readLastSyncedAtFromStorage());
+/** When we last synced (push or pull). Hydrated from localStorage when subscribeSyncEvents runs. */
+const [lastSyncedAt, setLastSyncedAt] = createSignal<number | null>(null);
 
-function updateLastSyncedAt(createdAt: number): void {
+/** In-flight sync direction; status is 'syncing' while set. */
+const [syncingDirection, setSyncingDirection] = createSignal<'push' | 'pull' | null>(null);
+
+function updateLastSyncedAt(createdAt: number, pubkey: string): void {
+  writeLastSyncedAtToStorage(pubkey, createdAt);
   setLastSyncedAt(createdAt);
-  writeLastSyncedAtToStorage(createdAt);
 }
 
 // --- Sync status ---
 
-export type SyncStatus = 'relay-is-new' | 'local-is-new' | 'in-sync';
+export type SyncStatus = 'relay-is-new' | 'local-is-new' | 'in-sync' | 'syncing';
 
 /**
- * Reactive. Returns whether relay has newer data, local has changes to push, or in sync.
+ * Reactive. Returns whether relay has newer data, local has changes to push, in sync, or syncing.
  */
 export function getSyncStatus(): SyncStatus {
+  if (syncingDirection() !== null) {
+    return 'syncing';
+  }
+
   const evt = relayEvent();
   const syncedAt = lastSyncedAt();
 
@@ -113,6 +124,11 @@ export function getLastSyncedAt(): number | null {
   return lastSyncedAt();
 }
 
+/** Reactive. Current sync direction while syncing ('push' | 'pull'), or null. */
+export function getSyncingDirection(): 'push' | 'pull' | null {
+  return syncingDirection();
+}
+
 // --- Subscription ---
 
 function logCloseReasons(reasons: string[]): void {
@@ -127,9 +143,12 @@ function logCloseReasons(reasons: string[]): void {
 /**
  * Subscribe to NIP-78 sync events for the given pubkey. Keeps only the latest event
  * (by created_at); older events from slower relays are ignored.
+ * Hydrates lastSyncedAt from localStorage (key: recall-trainer-sync-meta-${pubkey}).
  * Call on login; return value is unsubscribe (call on logout).
  */
 export function subscribeSyncEvents(relays: string[], pubkey: string): () => void {
+  setLastSyncedAt(readLastSyncedAtFromStorage(pubkey));
+
   let bestCreatedAt = lastSyncedAt() ?? 0;
 
   const sub = pool.subscribe(
@@ -141,7 +160,11 @@ export function subscribeSyncEvents(relays: string[], pubkey: string): () => voi
     },
     {
       onevent: (event) => {
-        if (event.created_at <= bestCreatedAt) {
+        if (event.created_at < bestCreatedAt) {
+          return;
+        }
+
+        if (event.created_at === bestCreatedAt && relayEvent() !== null) {
           return;
         }
 
@@ -152,41 +175,44 @@ export function subscribeSyncEvents(relays: string[], pubkey: string): () => voi
     },
   );
 
-  return () => sub.close();
+  return () => {
+    sub.close();
+    setRelayEvent(null);
+    setLastSyncedAt(null);
+  };
 }
 
-/** Clear relay event and lastSyncedAt (signal + localStorage). Call on logout. */
+/** Clear in-memory sync state only (signals). Does not remove localStorage. Call on logout. */
 export function clearSyncState(): void {
   setRelayEvent(null);
   setLastSyncedAt(null);
-
-  try {
-    localStorage.removeItem(SYNC_META_KEY);
-  } catch (err) {
-    console.error('[nip78] Failed to clear sync meta:', err);
-  }
+  setSyncingDirection(null);
 }
 
 // --- Pull ---
 
 /**
  * Apply the latest relay event content to local store and update lastSyncedAt.
- * No-op if there is no relay event.
+ * No-op if there is no relay event. Caller must pass pubkey (e.g. from auth.pubkey()).
  */
-export function pullSyncData(): void {
+export function pullSyncData(pubkey: string): void {
   const evt = relayEvent();
 
   if (!evt) {
     return;
   }
 
+  setSyncingDirection('pull');
+
   try {
     const payload = JSON.parse(evt.content) as Nip78SyncPayload;
 
     store.applySyncPayload(payload);
-    updateLastSyncedAt(evt.created_at);
+    updateLastSyncedAt(evt.created_at, pubkey);
   } catch (err) {
     console.error('[nip78] Failed to apply relay payload:', err);
+  } finally {
+    setSyncingDirection(null);
   }
 }
 
@@ -232,6 +258,8 @@ export async function pushSyncData(params: PushSyncParams): Promise<void> {
     tags: [['d', NIP78_D_TAG]],
   };
 
+  setSyncingDirection('push');
+
   try {
     const { signedEvent } = await signEvent({
       event: template,
@@ -249,7 +277,8 @@ export async function pushSyncData(params: PushSyncParams): Promise<void> {
     const atLeastOneSuccess = results.some((r) => r.status === 'fulfilled');
 
     if (atLeastOneSuccess) {
-      updateLastSyncedAt(created_at);
+      updateLastSyncedAt(created_at, userPubkey);
+      setRelayEvent({ content, created_at });
       onSuccess();
     } else {
       onError(t('Sync data publish failed.'));
@@ -257,5 +286,7 @@ export async function pushSyncData(params: PushSyncParams): Promise<void> {
   } catch (error) {
     console.error('[nip78] Failed to sign or publish sync event:', error);
     onError(t('Could not sign sync data.'));
+  } finally {
+    setSyncingDirection(null);
   }
 }

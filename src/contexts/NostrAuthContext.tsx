@@ -115,8 +115,6 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     return () => {
       unsub65();
       unsub78();
-      clearRelays();
-      clearSyncState();
     };
   });
 
@@ -156,7 +154,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
       } else {
         switch (auth.method) {
           case 'nostrconnect':
-            if ('relay' in auth.data) {
+            if ('relays' in auth.data) {
               setProvider(createNostrConnectProvider(auth.data));
             } else {
               setProvider(null);

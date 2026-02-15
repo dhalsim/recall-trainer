@@ -78,8 +78,11 @@
   "Hide settings": "設定を隠す",
   "Refresh": "更新",
   "Help": "ヘルプ",
+  "Add at least one relay URL": "少なくとも1つのリレーURLを追加してください",
+  "Add relay": "リレーを追加",
   "Relay URL": "リレー URL",
   "Relay changed. Click Refresh to update the QR code.": "リレーを変更しました。QRコードを更新するには「更新」をクリックしてください。",
+  "Remove relay": "リレーを削除",
   "Encryption format not recognized": "暗号形式が認識されません",
   "Invalid response format": "無効な応答形式です",
   "Connection secret mismatch": "接続シークレットが一致しません",
@@ -131,6 +134,7 @@
   "Enter your ncryptsec and password.": "ncryptsec とパスワードを入力してください。",
   "No publish relays available.": "公開用リレーがありません。",
   "Could not get public key.": "公開鍵を取得できませんでした。",
+  "Get public key for passkey verification": "パスキー確認のため公開鍵を取得",
   "Could not sign sync data.": "同期データに署名できませんでした。",
   "Sync data publish failed.": "同期データの公開に失敗しました。",
   "Publish sync data": "同期データを公開",
@@ -157,5 +161,6 @@
   "1 hour ago": "1時間前",
   "{{count}} hours ago": "{{count}}時間前",
   "1 day ago": "1日前",
-  "{{count}} days ago": "{{count}}日前"
+  "{{count}} days ago": "{{count}}日前",
+  "Sync Data": "データ同期"
 }

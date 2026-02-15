@@ -183,11 +183,8 @@ export type SyncPayload = Pick<
   | 'mainLanguage'
   | 'targetLanguage'
   | 'languageSelectionComplete'
-  | 'screen'
   | 'entries'
   | 'questionsPerSession'
-  | 'simulationMode'
-  | 'simulationDate'
 >;
 
 const defaultState: AppState = {
@@ -680,7 +677,6 @@ function createStore() {
         targetLanguage: payload.targetLanguage ?? prev.targetLanguage,
         languageSelectionComplete:
           payload.languageSelectionComplete ?? prev.languageSelectionComplete,
-        screen: payload.screen ?? prev.screen,
         entries,
         questionsPerSession:
           typeof payload.questionsPerSession === 'number'
@@ -689,8 +685,6 @@ function createStore() {
                 Math.max(QUESTIONS_PER_SESSION_MIN, payload.questionsPerSession),
               )
             : prev.questionsPerSession,
-        simulationMode: payload.simulationMode ?? prev.simulationMode,
-        simulationDate: payload.simulationDate ?? prev.simulationDate,
       };
 
       saveState(next);

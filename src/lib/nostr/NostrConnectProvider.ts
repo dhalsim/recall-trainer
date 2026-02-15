@@ -1,7 +1,7 @@
-import { finalizeEvent, nip04, nip44, Relay } from 'nostr-tools';
+import { finalizeEvent, nip04, nip44 } from 'nostr-tools';
 import { bytesToHex, hexToBytes } from 'nostr-tools/utils';
 
-import { assertUnreachable, createKeyPair, generateRandomHexString } from '../../utils/nostr';
+import { assertUnreachable, createKeyPair, generateRandomHexString, pool } from '../../utils/nostr';
 
 import type {
   NostrConnectData,
@@ -24,7 +24,7 @@ function generateRandomSecret(): string {
   return result;
 }
 
-export function generateNostrConnectUri(relay: string): {
+export function generateNostrConnectUri(relays: string[]): {
   uri: string;
   ephemeralData: NostrConnectData;
 } {
@@ -32,17 +32,18 @@ export function generateNostrConnectUri(relay: string): {
   const connectionSecret = generateRandomSecret();
 
   const params = new URLSearchParams({
-    relay,
     secret: connectionSecret,
     perms: 'sign_event,get_public_key',
     name: 'Recall Trainer',
     url: typeof window !== 'undefined' ? window.location.origin : '',
   });
 
+  relays.forEach((r) => params.append('relay', r));
+
   const uri = `nostrconnect://${keyPair.pubkey}?${params.toString()}`;
 
   const ephemeralData: NostrConnectData = {
-    relay,
+    relays,
     uri,
     ephemeralSecret: bytesToHex(keyPair.secret),
     ephemeralPubkey: keyPair.pubkey,
@@ -130,66 +131,70 @@ export class NostrConnectProvider implements NostrProvider {
     };
 
     const signedEvent = finalizeEvent(eventTemplateForSigning, ephemeralSecret);
-    const r = new Relay(this.data.relay);
+    const relays = this.data.relays.filter((u) => u.trim().length > 0);
 
-    await r.connect();
-    await r.publish(signedEvent);
+    if (relays.length === 0) {
+      throw new Error('No relay configured for Nostr Connect');
+    }
+
+    await Promise.allSettled(pool.publish(relays, signedEvent));
 
     return new Promise((resolve, reject) => {
-      const sub = r.subscribe(
-        [
-          {
-            kinds: [24133],
-            authors: [this.data.remoteSignerPubkey as string],
-            '#p': [this.data.ephemeralPubkey],
-            limit: 1,
-          },
-        ],
+      const sub = pool.subscribe(
+        relays,
         {
-          onevent: async (event) => {
-            if (event.kind === 24133 && event.pubkey === this.data.remoteSignerPubkey) {
-              const decrypted = decryptContent(event.content, event.pubkey, ephemeralSecret);
+          kinds: [24133],
+          authors: [this.data.remoteSignerPubkey as string],
+          '#p': [this.data.ephemeralPubkey],
+          limit: 1,
+        },
+        {
+          onevent: (event) => {
+            if (event.kind !== 24133 || event.pubkey !== this.data.remoteSignerPubkey) {
+              return;
+            }
 
-              if (!decrypted) {
-                sub.close();
-                reject(new Error('Failed to decrypt content'));
+            const decrypted = decryptContent(event.content, event.pubkey, ephemeralSecret);
 
-                return;
-              }
+            if (!decrypted) {
+              sub.close();
+              reject(new Error('Failed to decrypt content'));
 
-              let parsed: { id: string; result?: string; error?: string };
+              return;
+            }
 
-              try {
-                parsed = JSON.parse(decrypted);
-              } catch (e) {
-                sub.close();
-                reject(e);
+            let parsed: { id: string; result?: string; error?: string };
 
-                return;
-              }
+            try {
+              parsed = JSON.parse(decrypted);
+            } catch (e) {
+              sub.close();
+              reject(e);
 
-              if (parsed.id !== id) {
-                return;
-              }
+              return;
+            }
 
-              if (parsed.error) {
-                sub.close();
-                reject(new Error(parsed.error));
+            if (parsed.id !== id) {
+              return;
+            }
 
-                return;
-              }
+            if (parsed.error) {
+              sub.close();
+              reject(new Error(parsed.error));
 
-              try {
-                const signed = JSON.parse(
-                  parsed.result ?? 'null',
-                ) as SignEventResult['signedEvent'];
+              return;
+            }
 
-                sub.close();
-                resolve({ signedEvent: signed, provider: this });
-              } catch (e) {
-                sub.close();
-                reject(e);
-              }
+            try {
+              const signed = JSON.parse(parsed.result ?? 'null') as SignEventResult['signedEvent'];
+
+              sub.close();
+
+              resolve({ signedEvent: signed, provider: this });
+            } catch (e) {
+              sub.close();
+
+              reject(e);
             }
           },
         },
