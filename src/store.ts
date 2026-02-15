@@ -176,6 +176,20 @@ export interface AppState {
   authLoginState: AuthLoginState | null;
 }
 
+/** NIP-78 sync payload: whitelisted keys only. Used when pulling from relays. */
+export type SyncPayload = Pick<
+  AppState,
+  | 'version'
+  | 'mainLanguage'
+  | 'targetLanguage'
+  | 'languageSelectionComplete'
+  | 'screen'
+  | 'entries'
+  | 'questionsPerSession'
+  | 'simulationMode'
+  | 'simulationDate'
+>;
+
 const defaultState: AppState = {
   version: SETTINGS_VERSION,
   mainLanguage: null,
@@ -639,6 +653,53 @@ function createStore() {
     persist((prev) => ({ ...prev, authLoginState: null }));
   };
 
+  /** Apply NIP-78 sync payload from relays (pull). Merges payload into state and persists. */
+  const applySyncPayload = (payload: SyncPayload): void => {
+    const now = startOfToday();
+    const rawEntries = payload.entries ?? [];
+
+    const entries: VocabEntry[] = rawEntries.map((e) => ({
+      ...e,
+      source: {
+        ...e.source,
+        nextReviewAt: typeof e.source.nextReviewAt === 'number' ? e.source.nextReviewAt : now,
+        level: typeof e.source.level === 'number' ? e.source.level : 0,
+      },
+      target: {
+        ...e.target,
+        nextReviewAt: typeof e.target.nextReviewAt === 'number' ? e.target.nextReviewAt : now,
+        level: typeof e.target.level === 'number' ? e.target.level : 0,
+      },
+    }));
+
+    setState((prev) => {
+      const next: AppState = {
+        ...prev,
+        version: payload.version ?? prev.version,
+        mainLanguage: payload.mainLanguage ?? prev.mainLanguage,
+        targetLanguage: payload.targetLanguage ?? prev.targetLanguage,
+        languageSelectionComplete:
+          payload.languageSelectionComplete ?? prev.languageSelectionComplete,
+        screen: payload.screen ?? prev.screen,
+        entries,
+        questionsPerSession:
+          typeof payload.questionsPerSession === 'number'
+            ? Math.min(
+                QUESTIONS_PER_SESSION_MAX,
+                Math.max(QUESTIONS_PER_SESSION_MIN, payload.questionsPerSession),
+              )
+            : prev.questionsPerSession,
+        simulationMode: payload.simulationMode ?? prev.simulationMode,
+        simulationDate: payload.simulationDate ?? prev.simulationDate,
+      };
+
+      saveState(next);
+      applyClockFromState(next);
+
+      return next;
+    });
+  };
+
   return {
     state,
     testSession,
@@ -662,6 +723,7 @@ function createStore() {
     advanceSimulationDay,
     setAuthLoginState,
     clearAuthLoginState,
+    applySyncPayload,
   };
 }
 

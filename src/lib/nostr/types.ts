@@ -66,3 +66,7 @@ export type AuthLoginState = {
   loggedIn: boolean;
   data?: NostrConnectData | Nip55SignerData | PasskeySignerData | PasswordSignerData;
 };
+
+export type EventItem = NostrEvent & {
+  relays: string[];
+};

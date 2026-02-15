@@ -1,6 +1,8 @@
 import type { JSX } from 'solid-js';
 import { createContext, createEffect, createSignal, useContext } from 'solid-js';
 
+import { clearRelays, getRelays, subscribeRelays } from '../lib/nostr/nip65';
+import { clearSyncState, subscribeSyncEvents } from '../lib/nostr/nip78';
 import {
   checkNip55Callback,
   clearNip55Result,
@@ -24,12 +26,13 @@ import type {
   SignEventResult,
 } from '../lib/nostr/types';
 import { store } from '../store';
-import { assertUnreachable } from '../utils/nostr';
+import { assertUnreachable, DEFAULT_READ_RELAYS, pool } from '../utils/nostr';
 
 export type { NostrConnectData, LoginResult, NostrProvider };
 
 interface NostrAuthContextValue {
   provider: NostrProvider | null;
+  pubkey: () => string | null;
   isLoggedIn: () => boolean;
   isInitialized: () => boolean;
   loginWithNostrConnect: (data: NostrConnectData) => Promise<LoginResult>;
@@ -56,11 +59,62 @@ export function useNostrAuth(): NostrAuthContextValue {
 
 export function NostrAuthProvider(props: { children: JSX.Element }) {
   const [provider, setProvider] = createSignal<NostrProvider | null>(null);
+  const [pubkey, setPubkey] = createSignal<string | null>(null);
   const [isInitialized, setIsInitialized] = createSignal(false);
 
   const [pendingNip55SignResult, setPendingNip55SignResult] = createSignal<SignEventResult | null>(
     null,
   );
+
+  // Resolve pubkey when provider changes
+  createEffect(() => {
+    const p = provider();
+
+    if (!p) {
+      setPubkey(null);
+
+      return;
+    }
+
+    let cancelled = false;
+
+    void p.getPublicKey().then((pk) => {
+      if (cancelled || !pk) {
+        return;
+      }
+
+      setPubkey(pk);
+    });
+
+    return () => {
+      cancelled = true;
+      setPubkey(null);
+    };
+  });
+
+  // Subscribe to NIP-65 and NIP-78 when pubkey is available
+  createEffect(() => {
+    const pk = pubkey();
+
+    if (!pk) {
+      clearRelays();
+      clearSyncState();
+
+      return;
+    }
+
+    const unsub65 = subscribeRelays(pool, pk);
+    const readRelays =
+      getRelays(pk)?.readRelays?.length ? getRelays(pk)!.readRelays : DEFAULT_READ_RELAYS;
+    const unsub78 = subscribeSyncEvents(readRelays, pk);
+
+    return () => {
+      unsub65();
+      unsub78();
+      clearRelays();
+      clearSyncState();
+    };
+  });
 
   createEffect(() => {
     checkNip55Callback();
@@ -284,6 +338,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     get provider() {
       return provider();
     },
+    pubkey,
     isLoggedIn: getIsLoggedIn,
     isInitialized,
     loginWithNostrConnect,

@@ -45,6 +45,14 @@ Check AGENTS.md for the requirements.
   - Show this option only on Android (user-agent detection); add to NostrConnectAuth UI as a tab/button alongside QR.
   - New provider method `'nip55'`; see `docs/NOSTR_CONNECT_PLAN.md` §11.8 for full design.
 
+- [x] **Due-count on main screen:** Show how many due entries/directions we have in the bucket on the main (mode selection) screen. Use `getDueSourceToTarget(entries)` and `getDueTargetToSource(entries)` from the store. Suggested placement: inside or next to the "Take a test" button in `ModeSelection.tsx` (e.g. "Take a test (12 due)" or per-direction counts).
+
+- [ ] **Nostr NIP-78 sync (kind 30078)** — Sync app state to Nostr relay as addressable app data
+  - Use event kind `30078`, `d` tag `"recall-trainer-sync-data"`, `content` = stringified JSON of app state (or sync payload). Nostr auth required (`signEvent`, `getPublicKey`).
+  - Sync logic: fetch latest event for kind 30078 + d; compare `created_at` with local sync metadata; either **pull** (fetch and update localStorage from relay, with backup before overwrite) or **push** (publish replace event with same kind + d). Relays keep versions for replaceable events (30000–39999).
+  - Keep a backup in localStorage before applying remote data (e.g. `recall-trainer-state-backup` or timestamped) so user can recover if needed.
+  - See `docs/nostr_nip78_sync_plan.md` for full design.
+
 ---
 
 ## Phase 2 — AI Features (Later)

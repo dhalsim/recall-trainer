@@ -474,18 +474,27 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
           </div>
         </Show>
 
-        <Show when={showAndroid(flow()) && isAndroid()}>
+        <Show when={showAndroid(flow())}>
           <div class="flex flex-col gap-2">
-            <p class="text-center text-sm text-slate-600">
-              {t('On Android you can open your signer app directly.')}
-            </p>
-            <button
-              type="button"
-              onClick={openAndroidSigner}
-              class="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-400 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+            <Show
+              when={isAndroid()}
+              fallback={
+                <p class="text-center text-sm text-slate-600">
+                  {t('Amber is for Android. Use this option on an Android device, or use Nostr Connect (QR) from this device.')}
+                </p>
+              }
             >
-              {t('Open Android Signer')}
-            </button>
+              <p class="text-center text-sm text-slate-600">
+                {t('On Android you can open your signer app directly.')}
+              </p>
+              <button
+                type="button"
+                onClick={openAndroidSigner}
+                class="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-400 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+              >
+                {t('Open Android Signer')}
+              </button>
+            </Show>
           </div>
         </Show>
 
