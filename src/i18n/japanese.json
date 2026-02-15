@@ -114,6 +114,7 @@
   "Paste your ncryptsec and enter your password to unlock.": "ncryptsec を貼り付け、パスワードを入力して解除してください。",
   "Passkey Protected Login": "パスキー保護でログイン",
   "Verify with your passkey or set one up first.": "パスキーで確認するか、先に設定してください。",
+  "Decrypt with your passkey or set one up first.": "パスキーで復号するか、先にパスキーを設定してください。",
   "Nostr Connect (QR)": "Nostr Connect（QR）",
   "Scan the QR code with your signer app or copy the URI.": "サインアプリで QR コードをスキャンするか、URI をコピーしてください。",
   "Coming soon": "近日対応",

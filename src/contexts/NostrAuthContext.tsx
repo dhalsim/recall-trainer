@@ -1,8 +1,6 @@
 import type { JSX } from 'solid-js';
 import { createContext, createEffect, createSignal, useContext } from 'solid-js';
 
-import { clearRelays, getRelays, subscribeRelays } from '../lib/nostr/nip65';
-import { clearSyncState, subscribeSyncEvents } from '../lib/nostr/nip78';
 import {
   checkNip55Callback,
   clearNip55Result,
@@ -10,6 +8,8 @@ import {
   getNip55Result,
   parseNip55SignEventResult,
 } from '../lib/nostr/Nip55Provider';
+import { clearRelays, getRelays, subscribeRelays } from '../lib/nostr/nip65';
+import { clearSyncState, subscribeSyncEvents } from '../lib/nostr/nip78';
 import {
   createNostrConnectProvider,
   type NostrConnectData,
@@ -17,6 +17,7 @@ import {
 import { createPasskeySigner } from '../lib/nostr/PasskeySignerProvider';
 import { createPasswordSigner } from '../lib/nostr/PasswordSignerProvider';
 import type {
+  GetPublicKeyParams,
   LoginResult,
   Nip55SignerData,
   NostrProvider,
@@ -40,7 +41,7 @@ interface NostrAuthContextValue {
   loginWithPasskey: (data: PasskeySignerData) => Promise<LoginResult>;
   loginWithPasswordSigner: (data: PasswordSignerData, password: string) => Promise<LoginResult>;
   logout: () => void;
-  getPublicKey: (params?: { options?: { reason?: string } }) => Promise<string | null>;
+  getPublicKey: (params: GetPublicKeyParams) => Promise<string | null>;
   signEvent: (params: SignEventParams) => Promise<SignEventResult>;
   getPendingNip55SignResult: () => SignEventResult | null;
 }
@@ -78,7 +79,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
     let cancelled = false;
 
-    void p.getPublicKey().then((pk) => {
+    void p.getPublicKey({ reason: 'Get public key' }).then((pk) => {
       if (cancelled || !pk) {
         return;
       }
@@ -104,8 +105,11 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     }
 
     const unsub65 = subscribeRelays(pool, pk);
-    const readRelays =
-      getRelays(pk)?.readRelays?.length ? getRelays(pk)!.readRelays : DEFAULT_READ_RELAYS;
+
+    const readRelays = getRelays(pk)?.readRelays?.length
+      ? getRelays(pk)!.readRelays
+      : DEFAULT_READ_RELAYS;
+
     const unsub78 = subscribeSyncEvents(readRelays, pk);
 
     return () => {
@@ -306,9 +310,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     setProvider(null);
   };
 
-  const getPublicKey = async (params?: {
-    options?: { reason?: string };
-  }): Promise<string | null> => {
+  const getPublicKey = async (params: GetPublicKeyParams): Promise<string | null> => {
     const p = provider();
 
     if (!p) {
@@ -316,7 +318,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     }
 
     try {
-      return await p.getPublicKey(params ?? undefined);
+      return await p.getPublicKey(params);
     } catch (error) {
       console.error('Failed to get public key from provider:', error);
 

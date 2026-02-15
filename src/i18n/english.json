@@ -114,6 +114,7 @@
   "Paste your ncryptsec and enter your password to unlock.": "Paste your ncryptsec and enter your password to unlock.",
   "Passkey Protected Login": "Passkey Protected Login",
   "Verify with your passkey or set one up first.": "Verify with your passkey or set one up first.",
+  "Decrypt with your passkey or set one up first.": "Decrypt with your passkey or set one up first.",
   "Nostr Connect (QR)": "Nostr Connect (QR)",
   "Scan the QR code with your signer app or copy the URI.": "Scan the QR code with your signer app or copy the URI.",
   "Coming soon": "Coming soon",

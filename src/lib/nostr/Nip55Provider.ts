@@ -44,7 +44,7 @@ export function buildNip55SignEventUri(event: EventTemplate): string {
   const base = getNip55CallbackBaseUrl();
   const callbackUrl = encodeURIComponent(`${base}/?event=`);
   const encodedEvent = encodeURIComponent(JSON.stringify(event));
-  const params = `compressionType=none&returnType=event&type=sign_event&callbackUrl=${callbackUrl}`;
+  const params = `compressionType=none&returnType=signature&type=sign_event&callbackUrl=${callbackUrl}`;
 
   return `nostrsigner:${encodedEvent}?${params}`;
 }

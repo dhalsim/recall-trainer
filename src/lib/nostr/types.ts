@@ -6,16 +6,16 @@ export type ProviderCapability = 'getRelays' | 'signEvent' | 'getPublicKey';
 
 export type SignEventParams = {
   event: EventTemplate;
-  options?: { reason?: string };
+  reason: string;
 };
 
 export type SignEventResult = { signedEvent: NostrEvent; provider: NostrProvider };
 
 export type SignEvent = (params: SignEventParams) => Promise<SignEventResult>;
 
-export type GetPublicKeyParams = { options?: { reason?: string } };
+export type GetPublicKeyParams = { reason: string };
 
-export type GetPublicKey = (params?: GetPublicKeyParams) => Promise<string | null>;
+export type GetPublicKey = (params: GetPublicKeyParams) => Promise<string | null>;
 
 export interface NostrProvider {
   method: NostrProviderMethod;

@@ -88,7 +88,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
           }
         }}
       >
-        <div class="fixed inset-0 bg-slate-900/50" aria-hidden="true" />
+        <div
+          class="fixed inset-0 bg-slate-900/50"
+          aria-hidden="true"
+          onClick={() => props.onClose()}
+        />
         <div
           class="relative z-10 w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
           onClick={(e) => e.stopPropagation()}
@@ -160,7 +164,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
               <Show
                 when={auth.isLoggedIn()}
                 fallback={
-                  <p class="mt-2 text-sm text-slate-500">{t('Sign in with Nostr to push sync data.')}</p>
+                  <p class="mt-2 text-sm text-slate-500">
+                    {t('Sign in with Nostr to push sync data.')}
+                  </p>
                 }
               >
                 {(() => {
@@ -180,8 +186,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
                             type="button"
                             disabled={pushLoading()}
                             onClick={async () => {
-                              if (!pk) return;
+                              if (!pk) {
+                                return;
+                              }
+
                               setPushLoading(true);
+
                               await pushSyncData({
                                 publishRelays: getPublishRelays(pk),
                                 getPublicKey: auth.getPublicKey,
@@ -220,48 +230,49 @@ export function SettingsDialog(props: SettingsDialogProps) {
                           {relayAt !== null ? formatRelativeTime(relayAt) : t('No relay data')}
                         </p>
                       </div>
-                      {pk && (() => {
-                        const nip65: Nip65Relays | null = getRelays(pk) ?? null;
+                      {pk &&
+                        (() => {
+                          const nip65: Nip65Relays | null = getRelays(pk) ?? null;
 
-                        return (
-                          <div class="mt-3">
-                            <p class="text-xs font-medium text-slate-500">{t('Relays')}</p>
-                            <Show
-                              when={nip65 && nip65.flatRelays.length > 0}
-                              fallback={
-                                <p class="mt-1 text-xs text-slate-400">
-                                  {t('Using default relays')}
-                                </p>
-                              }
-                            >
-                              <ul class="mt-1 space-y-0.5">
-                                <For each={nip65!.flatRelays}>
-                                  {(r) => (
-                                    <li class="flex items-center gap-1.5 text-xs text-slate-600">
-                                      <span class="truncate font-mono">{r.relay}</span>
-                                      <Show when={r.read && r.write}>
-                                        <span class="shrink-0 rounded bg-slate-100 px-1 py-0.5 text-[10px] font-medium text-slate-500">
-                                          r/w
-                                        </span>
-                                      </Show>
-                                      <Show when={r.read && !r.write}>
-                                        <span class="shrink-0 rounded bg-green-50 px-1 py-0.5 text-[10px] font-medium text-green-600">
-                                          read
-                                        </span>
-                                      </Show>
-                                      <Show when={!r.read && r.write}>
-                                        <span class="shrink-0 rounded bg-blue-50 px-1 py-0.5 text-[10px] font-medium text-blue-600">
-                                          write
-                                        </span>
-                                      </Show>
-                                    </li>
-                                  )}
-                                </For>
-                              </ul>
-                            </Show>
-                          </div>
-                        );
-                      })()}
+                          return (
+                            <div class="mt-3">
+                              <p class="text-xs font-medium text-slate-500">{t('Relays')}</p>
+                              <Show
+                                when={nip65 && nip65.flatRelays.length > 0}
+                                fallback={
+                                  <p class="mt-1 text-xs text-slate-400">
+                                    {t('Using default relays')}
+                                  </p>
+                                }
+                              >
+                                <ul class="mt-1 space-y-0.5">
+                                  <For each={nip65!.flatRelays}>
+                                    {(r) => (
+                                      <li class="flex items-center gap-1.5 text-xs text-slate-600">
+                                        <span class="truncate font-mono">{r.relay}</span>
+                                        <Show when={r.read && r.write}>
+                                          <span class="shrink-0 rounded bg-slate-100 px-1 py-0.5 text-[10px] font-medium text-slate-500">
+                                            r/w
+                                          </span>
+                                        </Show>
+                                        <Show when={r.read && !r.write}>
+                                          <span class="shrink-0 rounded bg-green-50 px-1 py-0.5 text-[10px] font-medium text-green-600">
+                                            read
+                                          </span>
+                                        </Show>
+                                        <Show when={!r.read && r.write}>
+                                          <span class="shrink-0 rounded bg-blue-50 px-1 py-0.5 text-[10px] font-medium text-blue-600">
+                                            write
+                                          </span>
+                                        </Show>
+                                      </li>
+                                    )}
+                                  </For>
+                                </ul>
+                              </Show>
+                            </div>
+                          );
+                        })()}
                     </>
                   );
                 })()}

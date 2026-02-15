@@ -114,6 +114,7 @@
   "Paste your ncryptsec and enter your password to unlock.": "ncryptsec'inizi yapıştırın ve kilidi açmak için parolanızı girin.",
   "Passkey Protected Login": "Parola Anahtarı Korumalı Giriş",
   "Verify with your passkey or set one up first.": "Parola anahtarınızla doğrulayın veya önce bir tane kurun.",
+  "Decrypt with your passkey or set one up first.": "Parola anahtarınızla şifreyi çözün veya önce bir tane kurun.",
   "Nostr Connect (QR)": "Nostr Connect (QR)",
   "Scan the QR code with your signer app or copy the URI.": "İmzalayıcı uygulamanızla QR kodu tarayın veya URI'yi kopyalayın.",
   "Coming soon": "Yakında",

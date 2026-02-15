@@ -1,17 +1,14 @@
 import { useNavigate } from '@solidjs/router';
 
 import { t } from '../i18n';
-import {
-  getDueSourceToTarget,
-  getDueTargetToSource,
-  store,
-} from '../store';
+import { getDueSourceToTarget, getDueTargetToSource, store } from '../store';
 
 export function ModeSelection() {
   const navigate = useNavigate();
 
   const dueCount = (): number => {
     const entries = store.state().entries;
+
     return getDueSourceToTarget(entries).length + getDueTargetToSource(entries).length;
   };
 

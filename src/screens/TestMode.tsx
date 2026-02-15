@@ -2,7 +2,7 @@ import { useNavigate } from '@solidjs/router';
 import { createEffect, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
 
 import { t } from '../i18n';
-import type { TestSessionSnapshot, VocabEntry } from '../store';
+import type { AppLanguage, TestSessionSnapshot, VocabEntry } from '../store';
 import {
   getEntriesWithDueSide,
   isSourceDue,
@@ -13,6 +13,11 @@ import {
 
 type Direction = 'source_to_target' | 'target_to_source';
 type Phase = 'idle' | 'question' | 'answer_feedback' | 'round_summary' | 'finished';
+
+/** Trim and locale-aware lowercasing for word comparison. */
+function normalizeForCompare(text: string, locale: AppLanguage | null): string {
+  return text.trim().toLocaleLowerCase(locale ?? undefined);
+}
 
 interface RoundResult {
   entry: VocabEntry;
@@ -202,10 +207,19 @@ export function TestMode() {
       return;
     }
 
-    const answer = userInput().trim();
+    const rawInput = userInput().trim();
     const isSourceToTarget = direction() === 'source_to_target';
-    const correctAnswer = isSourceToTarget ? entry.target.text : entry.source.text;
-    const correct = answer === correctAnswer;
+    const correctAnswerRaw = isSourceToTarget ? entry.target.text : entry.source.text;
+
+    const answerLocale = isSourceToTarget
+      ? store.state().targetLanguage
+      : store.state().mainLanguage;
+
+    const correct =
+      normalizeForCompare(rawInput, answerLocale) ===
+      normalizeForCompare(correctAnswerRaw, answerLocale);
+
+    const answer = rawInput;
 
     setRoundResults((prev) => [...prev, { entry, correct, userAnswer: answer }]);
 

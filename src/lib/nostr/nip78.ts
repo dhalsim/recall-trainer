@@ -213,7 +213,7 @@ export async function pushSyncData(params: PushSyncParams): Promise<void> {
     return;
   }
 
-  const userPubkey = await getPublicKey({ options: { reason: t('Publish sync data') } });
+  const userPubkey = await getPublicKey({ reason: t('Publish sync data') });
 
   if (!userPubkey) {
     onError(t('Could not get public key.'));
@@ -233,7 +233,10 @@ export async function pushSyncData(params: PushSyncParams): Promise<void> {
   };
 
   try {
-    const { signedEvent } = await signEvent({ event: template });
+    const { signedEvent } = await signEvent({
+      event: template,
+      reason: t('Publish sync data'),
+    });
 
     if (!signedEvent) {
       onError(t('Could not sign sync data.'));

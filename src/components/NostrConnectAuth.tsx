@@ -7,7 +7,6 @@ import { createSignal } from 'solid-js';
 
 import { useNostrAuth } from '../contexts/NostrAuthContext';
 import { t } from '../i18n';
-import { store } from '../store';
 import { buildNip55GetPublicKeyUri, saveNip55PendingRequest } from '../lib/nostr/Nip55Provider';
 import {
   decryptContent,
@@ -16,6 +15,8 @@ import {
 } from '../lib/nostr/NostrConnectProvider';
 import { createPasskeyCredentials, isPasskeySupported } from '../lib/nostr/PasskeySignerProvider';
 import { createPasswordProtectedKeypair } from '../lib/nostr/PasswordSignerProvider';
+import { store } from '../store';
+
 import type { ConnectStep } from './NostrConnectModal';
 
 interface NostrConnectAuthProps {
@@ -272,6 +273,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
 
     if (!password || password !== confirm) {
       props.onError(t('Passwords do not match.'));
+
       return;
     }
 
@@ -301,6 +303,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
 
     if (!ncryptsec || !password) {
       props.onError(t('Enter your ncryptsec and password.'));
+
       return;
     }
 
@@ -352,7 +355,8 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
               when={authState()?.method === 'passkey_signer'}
               fallback={
                 <p class="text-center text-sm text-slate-600">
-                  {t("Set up a passkey first")} ({t('New User')} → {t('Create Passkey Protected Keypair')})
+                  {t('Set up a passkey first')} ({t('New User')} →{' '}
+                  {t('Create Passkey Protected Keypair')})
                 </p>
               }
             >
@@ -392,7 +396,10 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
               {t('Password backup warning')}
             </p>
             <div class="space-y-2">
-              <label for="password-create-password" class="block text-sm font-medium text-slate-700">
+              <label
+                for="password-create-password"
+                class="block text-sm font-medium text-slate-700"
+              >
                 {t('Password')}
               </label>
               <input
@@ -436,7 +443,10 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
               {t('Password backup warning')}
             </p>
             <div class="space-y-2">
-              <label for="password-login-ncryptsec" class="block text-sm font-medium text-slate-700">
+              <label
+                for="password-login-ncryptsec"
+                class="block text-sm font-medium text-slate-700"
+              >
                 {t('Paste ncryptsec')}
               </label>
               <textarea
@@ -480,7 +490,9 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
               when={isAndroid()}
               fallback={
                 <p class="text-center text-sm text-slate-600">
-                  {t('Amber is for Android. Use this option on an Android device, or use Nostr Connect (QR) from this device.')}
+                  {t(
+                    'Amber is for Android. Use this option on an Android device, or use Nostr Connect (QR) from this device.',
+                  )}
                 </p>
               }
             >
@@ -499,95 +511,97 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
         </Show>
 
         <Show when={showNostrConnect(flow())}>
-        <div class="space-y-2">
-          <div class="flex justify-center">
-            <div class="rounded-lg border-2 border-slate-200 bg-white p-4">
-              <Show
-                when={!isQrLoading() && !isTyping() && qrSvg()}
-                fallback={
-                  <div class="flex h-[200px] w-[200px] items-center justify-center">
-                    <div class="h-8 w-8 animate-spin rounded-full border-2 border-b-blue-500" />
-                  </div>
-                }
-              >
-                <div
-                  class="cursor-pointer"
-                  onClick={copyUri}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      copyUri();
-                    }
-                  }}
-                  aria-label={t('Scan the QR code or click to copy')}
+          <div class="space-y-2">
+            <div class="flex justify-center">
+              <div class="rounded-lg border-2 border-slate-200 bg-white p-4">
+                <Show
+                  when={!isQrLoading() && !isTyping() && qrSvg()}
+                  fallback={
+                    <div class="flex h-[200px] w-[200px] items-center justify-center">
+                      <div class="h-8 w-8 animate-spin rounded-full border-2 border-b-blue-500" />
+                    </div>
+                  }
                 >
                   <div
-                    class="flex h-[200px] w-[200px] items-center justify-center [&>svg]:max-h-[200px] [&>svg]:max-w-[200px]"
-                    innerHTML={qrSvg()}
-                  />
-                  <Show when={showCopied()}>
-                    <p class="mt-2 text-center text-sm font-medium text-green-600">{t('Copied')}</p>
-                  </Show>
-                </div>
-              </Show>
+                    class="cursor-pointer"
+                    onClick={copyUri}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        copyUri();
+                      }
+                    }}
+                    aria-label={t('Scan the QR code or click to copy')}
+                  >
+                    <div
+                      class="flex h-[200px] w-[200px] items-center justify-center [&>svg]:max-h-[200px] [&>svg]:max-w-[200px]"
+                      innerHTML={qrSvg()}
+                    />
+                    <Show when={showCopied()}>
+                      <p class="mt-2 text-center text-sm font-medium text-green-600">
+                        {t('Copied')}
+                      </p>
+                    </Show>
+                  </div>
+                </Show>
+              </div>
             </div>
+
+            <Show when={isWaitingForConnection() && !isTyping()}>
+              <div class="py-2 text-center">
+                <div class="flex flex-col items-center gap-2 text-sm text-amber-600">
+                  <div class="h-4 w-4 animate-spin rounded-full border-2 border-b-amber-500" />
+                  <span>{t('Waiting for connection…')}</span>
+                  <span>{t('Scan the QR code or click to copy')}</span>
+                </div>
+              </div>
+            </Show>
+
+            <Show when={isTyping()}>
+              <div class="py-2 text-center">
+                <p class="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                  {t('Relay changed. Click Refresh to update the QR code.')}
+                </p>
+              </div>
+            </Show>
           </div>
 
-          <Show when={isWaitingForConnection() && !isTyping()}>
-            <div class="py-2 text-center">
-              <div class="flex flex-col items-center gap-2 text-sm text-amber-600">
-                <div class="h-4 w-4 animate-spin rounded-full border-2 border-b-amber-500" />
-                <span>{t('Waiting for connection…')}</span>
-                <span>{t('Scan the QR code or click to copy')}</span>
+          <div class="flex justify-center gap-2 p-4">
+            <button
+              type="button"
+              onClick={() => setShowRelayInput((v) => !v)}
+              class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              {showRelayInput() ? t('Hide settings') : t('Settings')}
+            </button>
+            <button
+              type="button"
+              onClick={() => refresh()}
+              class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              {t('Refresh')}
+            </button>
+          </div>
+
+          <Show when={showRelayInput()}>
+            <div class="space-y-2">
+              <label for="nostrconnect-relay" class="text-sm font-medium text-slate-700">
+                {t('Relay URL')}
+              </label>
+              <div class="flex gap-2">
+                <input
+                  id="nostrconnect-relay"
+                  type="url"
+                  placeholder={DEFAULT_RELAY}
+                  value={relay()}
+                  onInput={(e) => handleRelayChange(e.currentTarget.value)}
+                  class="block w-full flex-1 rounded-lg border border-slate-300 px-3 py-2 text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
               </div>
             </div>
           </Show>
-
-          <Show when={isTyping()}>
-            <div class="py-2 text-center">
-              <p class="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700">
-                {t('Relay changed. Click Refresh to update the QR code.')}
-              </p>
-            </div>
-          </Show>
-        </div>
-
-        <div class="flex justify-center gap-2 p-4">
-          <button
-            type="button"
-            onClick={() => setShowRelayInput((v) => !v)}
-            class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            {showRelayInput() ? t('Hide settings') : t('Settings')}
-          </button>
-          <button
-            type="button"
-            onClick={() => refresh()}
-            class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            {t('Refresh')}
-          </button>
-        </div>
-
-        <Show when={showRelayInput()}>
-          <div class="space-y-2">
-            <label for="nostrconnect-relay" class="text-sm font-medium text-slate-700">
-              {t('Relay URL')}
-            </label>
-            <div class="flex gap-2">
-              <input
-                id="nostrconnect-relay"
-                type="url"
-                placeholder={DEFAULT_RELAY}
-                value={relay()}
-                onInput={(e) => handleRelayChange(e.currentTarget.value)}
-                class="block w-full flex-1 rounded-lg border border-slate-300 px-3 py-2 text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-        </Show>
         </Show>
       </div>
     </div>
