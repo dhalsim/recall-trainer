@@ -18,16 +18,24 @@ export function AppLayout(props: AppLayoutProps) {
   const [showConnectModal, setShowConnectModal] = createSignal(false);
 
   return (
-    <div class="min-h-screen min-h-[100dvh] bg-slate-50 px-4 py-6 sm:px-6 sm:py-8">
+    <div class="flex min-h-screen min-h-[100dvh] flex-col bg-slate-50 px-4 py-6 sm:px-6 sm:py-8">
       {/* Header outside <main> so only one icon row; fixed at top of layout */}
-      <header class="mx-auto max-w-2xl" aria-label="App header">
+      <header class="mx-auto w-full max-w-2xl shrink-0" aria-label="App header">
         <AppHeader
           onOpenConnect={() => setShowConnectModal(true)}
           onOpenSettings={() => setShowSettings(true)}
         />
       </header>
-      <div class="mx-auto max-w-2xl">
-        <main role="main">{props.children}</main>
+      <div class="mx-auto flex w-full max-w-2xl flex-1 flex-col">
+        <main class="flex-1" role="main">
+          {props.children}
+        </main>
+        <footer
+          class="shrink-0 py-4 text-center text-xs text-slate-400"
+          aria-label="App version"
+        >
+          v {__APP_VERSION__}
+        </footer>
       </div>
       <SettingsDialog open={showSettings()} onClose={() => setShowSettings(false)} />
       <NostrConnectModal

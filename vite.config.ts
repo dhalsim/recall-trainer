@@ -1,9 +1,22 @@
+import { execSync } from 'node:child_process';
+
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import solid from 'vite-plugin-solid';
 
+function getGitHash(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
+  } catch {
+    return 'dev';
+  }
+}
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(getGitHash()),
+  },
   server: {
     host: true,
     port: process.env.PORT ? parseInt(process.env.PORT, 10) : 5273,
