@@ -1,6 +1,12 @@
 import type { EventTemplate, NostrEvent } from 'nostr-tools';
 
-export type NostrProviderMethod = 'nostrconnect' | 'nip55' | 'passkey_signer' | 'password_signer';
+export type NostrProviderMethod =
+  | 'bunker'
+  | 'nostrconnect'
+  | 'nip07'
+  | 'nip55'
+  | 'passkey_signer'
+  | 'password_signer';
 
 export type ProviderCapability = 'getRelays' | 'signEvent' | 'getPublicKey';
 
@@ -37,6 +43,15 @@ export interface NostrConnectData {
   remoteSignerPubkey: string | null;
 }
 
+/** Persisted data for NIP-46 Bunker (bunker:// URL from remote signer; client sends connect). */
+export interface BunkerSignerData {
+  relays: string[];
+  ephemeralSecret: string;
+  ephemeralPubkey: string;
+  remoteSignerPubkey: string;
+  userPubkey: string;
+}
+
 /** Persisted data for NIP-55 Android Signer (nostrsigner: intent). */
 export interface Nip55SignerData {
   pubkey: string;
@@ -64,7 +79,12 @@ export type AuthIntent = 'log_in' | 'read_pubkey' | 'sign_event';
 export type AuthLoginState = {
   method: NostrProviderMethod;
   loggedIn: boolean;
-  data?: NostrConnectData | Nip55SignerData | PasskeySignerData | PasswordSignerData;
+  data?:
+    | BunkerSignerData
+    | NostrConnectData
+    | Nip55SignerData
+    | PasskeySignerData
+    | PasswordSignerData;
 };
 
 export type EventItem = NostrEvent & {

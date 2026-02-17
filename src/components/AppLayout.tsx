@@ -31,7 +31,7 @@ export function AppLayout(props: AppLayoutProps) {
           {props.children}
         </main>
         <footer
-          class="shrink-0 py-4 text-center text-xs text-slate-400"
+          class="shrink-0 py-4 pb-[max(2rem,env(safe-area-inset-bottom,0px))] text-center text-xs text-slate-400"
           aria-label="App version"
         >
           v {__APP_VERSION__}
@@ -39,7 +39,7 @@ export function AppLayout(props: AppLayoutProps) {
       </div>
       <SettingsDialog open={showSettings()} onClose={() => setShowSettings(false)} />
       <NostrConnectModal
-        open={showConnectModal()}
+        open={showConnectModal}
         onClose={() => setShowConnectModal(false)}
         onSuccess={() => setShowConnectModal(false)}
       />

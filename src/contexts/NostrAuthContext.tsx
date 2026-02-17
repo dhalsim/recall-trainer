@@ -1,6 +1,8 @@
 import type { JSX } from 'solid-js';
 import { createContext, createEffect, createSignal, useContext } from 'solid-js';
 
+import { createNip07Provider } from '../lib/nostr/Nip07Provider';
+import { connectBunker, createBunkerProvider } from '../lib/nostr/BunkerProvider';
 import {
   checkNip55Callback,
   clearNip55Result,
@@ -17,6 +19,7 @@ import {
 import { createPasskeySigner } from '../lib/nostr/PasskeySignerProvider';
 import { createPasswordSigner } from '../lib/nostr/PasswordSignerProvider';
 import type {
+  BunkerSignerData,
   GetPublicKeyParams,
   LoginResult,
   Nip55SignerData,
@@ -27,16 +30,19 @@ import type {
   SignEventResult,
 } from '../lib/nostr/types';
 import { store } from '../store';
+import { delay } from '../utils/delay';
 import { assertUnreachable, DEFAULT_READ_RELAYS, pool } from '../utils/nostr';
 
-export type { NostrConnectData, LoginResult, NostrProvider };
+export type { BunkerSignerData, NostrConnectData, LoginResult, NostrProvider };
 
 interface NostrAuthContextValue {
   provider: NostrProvider | null;
   pubkey: () => string | null;
   isLoggedIn: () => boolean;
   isInitialized: () => boolean;
+  loginWithBunker: (bunkerUrl: string) => Promise<LoginResult>;
   loginWithNostrConnect: (data: NostrConnectData) => Promise<LoginResult>;
+  loginWithNip07: () => Promise<LoginResult>;
   loginWithNip55: (data: Nip55SignerData) => Promise<LoginResult>;
   loginWithPasskey: (data: PasskeySignerData) => Promise<LoginResult>;
   loginWithPasswordSigner: (data: PasswordSignerData, password: string) => Promise<LoginResult>;
@@ -118,7 +124,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     };
   });
 
-  createEffect(() => {
+  createEffect(async () => {
     checkNip55Callback();
 
     const nip55Result = getNip55Result();
@@ -149,20 +155,41 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     const auth = store.state().authLoginState;
 
     if (!nip55Result || nip55Result.type !== 'get_public_key') {
-      if (!auth?.loggedIn || !auth.data) {
+      const hasDataOrNip07 =
+        auth?.loggedIn && (auth.method === 'nip07' || auth.data !== undefined);
+
+      if (!hasDataOrNip07) {
         setProvider(null);
       } else {
         switch (auth.method) {
+          case 'bunker':
+            if (
+              auth.data &&
+              'userPubkey' in auth.data &&
+              'remoteSignerPubkey' in auth.data &&
+              'ephemeralSecret' in auth.data
+            ) {
+              setProvider(createBunkerProvider(auth.data));
+            } else {
+              setProvider(null);
+            }
+
+            break;
           case 'nostrconnect':
-            if ('relays' in auth.data) {
+            if (auth.data && 'uri' in auth.data) {
               setProvider(createNostrConnectProvider(auth.data));
             } else {
               setProvider(null);
             }
 
             break;
+          case 'nip07': {
+            const p = await delay(createNip07Provider, 2000);
+            setProvider(p);
+            break;
+          }
           case 'nip55':
-            if ('pubkey' in auth.data) {
+            if (auth.data && 'pubkey' in auth.data) {
               setProvider(createNip55Provider(auth.data));
             } else {
               setProvider(null);
@@ -170,7 +197,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
             break;
           case 'passkey_signer':
-            if ('ncryptsec' in auth.data && 'credentialId' in auth.data) {
+            if (auth.data && 'ncryptsec' in auth.data && 'credentialId' in auth.data) {
               setProvider(createPasskeySigner(auth.data));
             } else {
               setProvider(null);
@@ -178,7 +205,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
             break;
           case 'password_signer':
-            if ('ncryptsec' in auth.data && !('credentialId' in auth.data)) {
+            if (auth.data && 'ncryptsec' in auth.data && !('credentialId' in auth.data)) {
               setProvider(createPasswordSigner(auth.data));
             } else {
               setProvider(null);
@@ -198,6 +225,30 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
   const getIsLoggedIn = (): boolean => Boolean(provider());
 
+  const loginWithBunker = async (bunkerUrl: string): Promise<LoginResult> => {
+    try {
+      const data = await connectBunker(bunkerUrl);
+
+      store.setAuthLoginState({
+        method: 'bunker',
+        loggedIn: true,
+        data,
+      });
+
+      const p = createBunkerProvider(data);
+
+      setProvider(p);
+
+      return { success: true, provider: p };
+    } catch (error) {
+      console.error('Bunker login failed:', error);
+      store.clearAuthLoginState();
+      setProvider(null);
+
+      return { success: false, provider: null };
+    }
+  };
+
   const loginWithNostrConnect = async (data: NostrConnectData): Promise<LoginResult> => {
     try {
       store.setAuthLoginState({
@@ -213,6 +264,32 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
       return { success: true, provider: p };
     } catch (error) {
       console.error('Nostr Connect login failed:', error);
+      store.clearAuthLoginState();
+      setProvider(null);
+
+      return { success: false, provider: null };
+    }
+  };
+
+  const loginWithNip07 = async (): Promise<LoginResult> => {
+    try {
+      const p = createNip07Provider();
+      const ready = await p.isReady();
+
+      if (!ready) {
+        return { success: false, provider: null };
+      }
+
+      store.setAuthLoginState({
+        method: 'nip07',
+        loggedIn: true,
+      });
+
+      setProvider(p);
+
+      return { success: true, provider: p };
+    } catch (error) {
+      console.error('NIP-07 login failed:', error);
       store.clearAuthLoginState();
       setProvider(null);
 
@@ -341,7 +418,9 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     pubkey,
     isLoggedIn: getIsLoggedIn,
     isInitialized,
+    loginWithBunker,
     loginWithNostrConnect,
+    loginWithNip07,
     loginWithNip55,
     loginWithPasskey,
     loginWithPasswordSigner,

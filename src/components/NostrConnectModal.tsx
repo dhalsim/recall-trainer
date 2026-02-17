@@ -1,6 +1,7 @@
-import { createMemo, createSignal, Show, For } from 'solid-js';
+import { createEffect, createMemo, createSignal, Show, For } from 'solid-js';
 
 import { t } from '../i18n';
+import { isNip07Available } from '../lib/nostr/Nip07Provider';
 
 import { NostrConnectAuth } from './NostrConnectAuth';
 
@@ -9,8 +10,10 @@ export type ConnectStep =
   | 'new_user'
   | 'existing_user'
   | 'flow_extension_install'
+  | 'flow_extension_login'
   | 'flow_amber_install'
   | 'flow_amber_login'
+  | 'flow_bunker_login'
   | 'flow_passkey_create'
   | 'flow_passkey_login'
   | 'flow_password_create'
@@ -18,7 +21,8 @@ export type ConnectStep =
   | 'flow_nostr_connect';
 
 interface NostrConnectModalProps {
-  open: boolean;
+  /** Accessor so the modal can track open state and re-run effects (e.g. NIP-07 check) when dialog opens */
+  open: () => boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -71,6 +75,13 @@ const EXISTING_USER_OPTIONS_BASE = [
     flow: 'flow_nostr_connect' as ConnectStep,
   },
   {
+    id: 'bunker_login' as const,
+    titleKey: 'Bunker (paste URL)',
+    descKey: 'Paste a bunker:// URL from your remote signer to connect.',
+    comingSoon: false,
+    flow: 'flow_bunker_login' as ConnectStep,
+  },
+  {
     id: 'password_login' as const,
     titleKey: 'Password Protected Login',
     descKey: 'Paste your ncryptsec and enter your password to unlock.',
@@ -88,7 +99,8 @@ const EXISTING_USER_OPTIONS_BASE = [
     id: 'extension_login' as const,
     titleKey: 'Extension Login',
     descKey: 'Sign in with your browser extension (e.g. Quetta). Desktop or Android with Quetta.',
-    comingSoon: true,
+    comingSoon: false,
+    flow: 'flow_extension_login' as ConnectStep,
   },
   {
     id: 'amber_login' as const,
@@ -139,29 +151,52 @@ function ChoiceCard(props: { titleKey: string; descKey: string; onClick: () => v
   );
 }
 
-const EXISTING_ORDER_ANDROID: (typeof EXISTING_USER_OPTIONS_BASE)[number]['id'][] = [
-  'amber_login',
-  'nostr_connect',
-  'password_login',
-  'passkey_login',
-  'extension_login',
-];
-
-const EXISTING_ORDER_DESKTOP: (typeof EXISTING_USER_OPTIONS_BASE)[number]['id'][] = [
-  'nostr_connect',
-  'password_login',
-  'passkey_login',
-  'extension_login',
-  'amber_login',
-];
+type ExistingOptionId = (typeof EXISTING_USER_OPTIONS_BASE)[number]['id'];
 
 export function NostrConnectModal(props: NostrConnectModalProps) {
   const [step, setStep] = createSignal<ConnectStep>('choice');
 
-  const existingUserOptions = createMemo(() => {
-    const order = isAndroid() ? EXISTING_ORDER_ANDROID : EXISTING_ORDER_DESKTOP;
+  // Reactive so we pick up late-injected NIP-07 extensions
+  const [nip07Available, setNip07Available] = createSignal(isNip07Available());
 
-    return order.map((id) => EXISTING_USER_OPTIONS_BASE.find((o) => o.id === id)!);
+  createEffect(() => {
+    if (!props.open()) {
+      return;
+    }
+
+    setNip07Available(isNip07Available());
+    const t1 = setTimeout(() => setNip07Available(isNip07Available()), 300);
+    const t2 = setTimeout(() => setNip07Available(isNip07Available()), 1000);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  });
+
+  const existingUserOptions = createMemo(() => {
+    const extAvailable = nip07Available();
+    const order: ExistingOptionId[] = [
+      ...(extAvailable ? (['extension_login'] as const) : []),
+      ...(isAndroid() ? (['amber_login'] as const) : []),
+      'nostr_connect',
+      'bunker_login',
+      'password_login',
+      'passkey_login',
+    ];
+
+    return order.map((id) => {
+      const opt = EXISTING_USER_OPTIONS_BASE.find((o) => o.id === id)!;
+
+      if (opt.id === 'extension_login') {
+        return {
+          ...opt,
+          comingSoon: !extAvailable,
+        };
+      }
+
+      return opt;
+    });
   });
 
   function handleBack() {
@@ -178,6 +213,8 @@ export function NostrConnectModal(props: NostrConnectModalProps) {
       setStep('new_user');
     } else if (
       s === 'flow_amber_login' ||
+      s === 'flow_bunker_login' ||
+      s === 'flow_extension_login' ||
       s === 'flow_password_login' ||
       s === 'flow_passkey_login' ||
       s === 'flow_nostr_connect'
@@ -191,8 +228,10 @@ export function NostrConnectModal(props: NostrConnectModalProps) {
 
     return (
       s === 'flow_extension_install' ||
+      s === 'flow_extension_login' ||
       s === 'flow_amber_install' ||
       s === 'flow_amber_login' ||
+      s === 'flow_bunker_login' ||
       s === 'flow_passkey_create' ||
       s === 'flow_passkey_login' ||
       s === 'flow_password_create' ||
@@ -204,7 +243,7 @@ export function NostrConnectModal(props: NostrConnectModalProps) {
   const showBack = (): boolean => step() !== 'choice';
 
   return (
-    <Show when={props.open}>
+    <Show when={props.open()}>
       <div
         role="dialog"
         aria-modal="true"
@@ -295,9 +334,15 @@ export function NostrConnectModal(props: NostrConnectModalProps) {
                       titleKey={opt.titleKey}
                       descKey={opt.descKey}
                       comingSoon={opt.comingSoon}
-                      disabled={opt.id === 'amber_login' && !isAndroid()}
+                      disabled={
+                        (opt.id === 'amber_login' && !isAndroid()) ||
+                        (opt.id === 'extension_login' && !nip07Available())
+                      }
                       onClick={
-                        opt.flow && !opt.comingSoon && !(opt.id === 'amber_login' && !isAndroid())
+                        opt.flow &&
+                        !opt.comingSoon &&
+                        !(opt.id === 'amber_login' && !isAndroid()) &&
+                        !(opt.id === 'extension_login' && !nip07Available())
                           ? () => setStep(opt.flow!)
                           : undefined
                       }

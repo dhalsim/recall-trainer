@@ -6,6 +6,7 @@ import { createSignal } from 'solid-js';
 
 import { useNostrAuth } from '../contexts/NostrAuthContext';
 import { t } from '../i18n';
+import { isNip07Available } from '../lib/nostr/Nip07Provider';
 import { buildNip55GetPublicKeyUri, saveNip55PendingRequest } from '../lib/nostr/Nip55Provider';
 import {
   decryptContent,
@@ -52,6 +53,14 @@ function showNostrConnect(flow: ConnectStep | undefined): boolean {
   return !flow || flow === 'flow_nostr_connect';
 }
 
+function showExtensionLogin(flow: ConnectStep | undefined): boolean {
+  return flow === 'flow_extension_login';
+}
+
+function showBunker(flow: ConnectStep | undefined): boolean {
+  return flow === 'flow_bunker_login';
+}
+
 function showPasswordCreate(flow: ConnectStep | undefined): boolean {
   return flow === 'flow_password_create';
 }
@@ -63,7 +72,14 @@ function showPasswordLogin(flow: ConnectStep | undefined): boolean {
 export function NostrConnectAuth(props: NostrConnectAuthProps) {
   const flow = (): ConnectStep | undefined => props.flow;
   const auth = useNostrAuth();
-  const { loginWithNostrConnect, loginWithPasskey, loginWithPasswordSigner, getPublicKey } = auth;
+  const {
+    loginWithBunker,
+    loginWithNostrConnect,
+    loginWithNip07,
+    loginWithPasskey,
+    loginWithPasswordSigner,
+    getPublicKey,
+  } = auth;
   const authState = () => store.state().authLoginState;
   const [generatedUri, setGeneratedUri] = createSignal('');
   const [qrSvg, setQrSvg] = createSignal('');
@@ -81,6 +97,8 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   const [passwordCreateConfirm, setPasswordCreateConfirm] = createSignal('');
   const [passwordLoginNcryptsec, setPasswordLoginNcryptsec] = createSignal('');
   const [passwordLoginPassword, setPasswordLoginPassword] = createSignal('');
+  const [bunkerUrl, setBunkerUrl] = createSignal('');
+  const [bunkerLoading, setBunkerLoading] = createSignal(false);
 
   const [currentSubscription, setCurrentSubscription] = createSignal<{ close: () => void } | null>(
     null,
@@ -519,6 +537,103 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
             >
               <Show when={passwordLoginLoading()} fallback={t('Unlock')}>
                 <span class="h-4 w-4 animate-spin rounded-full border-2 border-b-white" />
+              </Show>
+            </button>
+          </div>
+        </Show>
+
+        <Show when={showExtensionLogin(flow())}>
+          <div class="flex flex-col gap-2">
+            <Show
+              when={isNip07Available()}
+              fallback={
+                <p class="text-center text-sm text-slate-600">
+                  {t('Install a Nostr browser extension (e.g. Quetta) to sign in with NIP-07.')}
+                </p>
+              }
+            >
+              <p class="text-center text-sm text-slate-600">
+                {t('Sign in with your browser extension.')}
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  props.onError('');
+                  try {
+                    const result = await loginWithNip07();
+
+                    if (result.success) {
+                      props.onSuccess(result);
+                    } else {
+                      props.onError(t('Login failed'));
+                    }
+                  } catch (error) {
+                    console.error('NIP-07 login failed:', error);
+                    props.onError(error instanceof Error ? error.message : t('Login failed'));
+                  }
+                }}
+                class="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-400 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-800 shadow-sm transition-colors hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                {t('Sign in with extension')}
+              </button>
+            </Show>
+          </div>
+        </Show>
+
+        <Show when={showBunker(flow())}>
+          <div class="flex flex-col gap-3">
+            <p class="text-sm text-slate-600">
+              {t('Paste the bunker:// URL from your remote signer (NIP-46) to connect.')}
+            </p>
+            <label for="bunker-url" class="sr-only">
+              {t('Bunker URL')}
+            </label>
+            <textarea
+              id="bunker-url"
+              value={bunkerUrl()}
+              onInput={(e) => setBunkerUrl(e.currentTarget.value)}
+              placeholder="bunker://&lt;pubkey&gt;?relay=wss://..."
+              rows={3}
+              class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              type="button"
+              disabled={bunkerLoading() || !bunkerUrl().trim()}
+              onClick={async () => {
+                const url = bunkerUrl().trim();
+
+                if (!url) {
+                  return;
+                }
+
+                setBunkerLoading(true);
+                props.onError('');
+
+                try {
+                  const result = await loginWithBunker(url);
+
+                  if (result.success) {
+                    props.onSuccess(result);
+                  } else {
+                    props.onError(t('Login failed'));
+                  }
+                } catch (error) {
+                  console.error('Bunker login failed:', error);
+                  props.onError(error instanceof Error ? error.message : t('Login failed'));
+                } finally {
+                  setBunkerLoading(false);
+                }
+              }}
+              class="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-400 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-800 shadow-sm transition-colors hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+            >
+              <Show
+                when={bunkerLoading()}
+                fallback={t('Connect')}
+              >
+                <span class="inline-flex items-center gap-2">
+                  <span class="h-4 w-4 animate-spin rounded-full border-2 border-b-blue-600" />
+                  {t('Connecting…')}
+                </span>
               </Show>
             </button>
           </div>
