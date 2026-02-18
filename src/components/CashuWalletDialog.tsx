@@ -1,6 +1,6 @@
-import { createEffect, createSignal, Show, For } from 'solid-js';
 import { getEncodedToken, sumProofs, Wallet } from '@cashu/cashu-ts';
 import type { Proof } from '@cashu/cashu-ts';
+import { createEffect, createSignal, Show, For } from 'solid-js';
 
 import { useNostrAuth } from '../contexts/NostrAuthContext';
 import { t } from '../i18n';
@@ -161,10 +161,12 @@ export function CashuWalletDialog(props: CashuWalletDialogProps) {
     try {
       const privkey = generateRandomHexString(64);
       const content: Nip60WalletContent = { privkey, mints: urls };
+
       const encrypted = await auth.nip44Encrypt(
         pubkey,
         JSON.stringify(walletContentToArray(content)),
       );
+
       const template = buildWalletEventTemplate(encrypted);
 
       const { signedEvent } = await auth.signEvent({
@@ -223,6 +225,7 @@ export function CashuWalletDialog(props: CashuWalletDialogProps) {
           pk,
           JSON.stringify(walletContentToArray(updated)),
         );
+
         const template = buildWalletEventTemplate(encrypted);
 
         const { signedEvent } = await auth.signEvent({
@@ -254,16 +257,20 @@ export function CashuWalletDialog(props: CashuWalletDialogProps) {
 
   const publishTokenEvent = async (mintUrl: string, proofs: Proof[]): Promise<void> => {
     const pk = auth.pubkey();
-    if (!pk) return;
-    const encrypted = await auth.nip44Encrypt(
-      pk,
-      JSON.stringify({ mint: mintUrl, proofs }),
-    );
+
+    if (!pk) {
+      return;
+    }
+
+    const encrypted = await auth.nip44Encrypt(pk, JSON.stringify({ mint: mintUrl, proofs }));
+
     const template = buildTokenEventTemplate(encrypted);
+
     const { signedEvent } = await auth.signEvent({
       event: template,
       reason: t('Publish token event'),
     });
+
     const writeRelays = getWriteRelays(pk);
     pool.publish(writeRelays, signedEvent);
   };
@@ -294,29 +301,35 @@ export function CashuWalletDialog(props: CashuWalletDialogProps) {
   const handleReceive = async (): Promise<void> => {
     const mintUrl = selectedMintUrl();
     const tokenStr = receiveTokenInput().trim();
+
     if (!mintUrl || !tokenStr) {
       setErrorMessage(t('Paste a Cashu token.'));
 
       return;
     }
+
     setLoadingOp(true);
     setErrorMessage(null);
     try {
       const wallet = new Wallet(mintUrl, { unit: 'sat' });
       await wallet.loadMint();
+
       const newProofs = await wallet.ops
         .receive(tokenStr)
         .asDeterministic()
         .requireDleq(true)
         .run();
+
       const prev = proofsByMint().get(mintUrl) ?? [];
       const merged = [...prev, ...newProofs];
+
       setProofsByMint((m) => {
         const next = new Map(m);
         next.set(mintUrl, merged);
 
         return next;
       });
+
       await publishTokenEvent(mintUrl, merged);
       closeMintPanel();
     } catch (err) {
@@ -330,37 +343,45 @@ export function CashuWalletDialog(props: CashuWalletDialogProps) {
   const handleSend = async (): Promise<void> => {
     const mintUrl = selectedMintUrl();
     const amount = Number.parseInt(sendAmountInput().trim(), 10);
+
     if (!mintUrl || Number.isNaN(amount) || amount <= 0) {
       setErrorMessage(t('Enter a valid amount.'));
 
       return;
     }
+
     const proofs = proofsByMint().get(mintUrl) ?? [];
     const balance = sumProofs(proofs);
+
     if (amount > balance) {
       setErrorMessage(t('Insufficient balance.'));
 
       return;
     }
+
     setLoadingOp(true);
     setErrorMessage(null);
     try {
       const wallet = new Wallet(mintUrl, { unit: 'sat' });
       await wallet.loadMint();
+
       const { keep, send: toSend } = await wallet.ops
         .send(amount, proofs)
         .asDeterministic()
         .includeFees(true)
         .run();
+
       const token = { mint: mintUrl, proofs: toSend };
       const encoded = getEncodedToken(token);
       setSentTokenEncoded(encoded);
+
       setProofsByMint((m) => {
         const next = new Map(m);
         next.set(mintUrl, keep);
 
         return next;
       });
+
       setPendingSentByMint((p) => {
         const next = new Map(p);
         const cur = next.get(mintUrl) ?? [];
@@ -368,6 +389,7 @@ export function CashuWalletDialog(props: CashuWalletDialogProps) {
 
         return next;
       });
+
       await publishTokenEvent(mintUrl, keep);
     } catch (err) {
       console.error('[CashuWallet] Send failed:', err);
@@ -377,8 +399,7 @@ export function CashuWalletDialog(props: CashuWalletDialogProps) {
     }
   };
 
-  const balanceForMint = (mintUrl: string): number =>
-    sumProofs(proofsByMint().get(mintUrl) ?? []);
+  const balanceForMint = (mintUrl: string): number => sumProofs(proofsByMint().get(mintUrl) ?? []);
 
   const pendingCountForMint = (mintUrl: string): number =>
     (pendingSentByMint().get(mintUrl) ?? []).length;
@@ -494,10 +515,7 @@ export function CashuWalletDialog(props: CashuWalletDialogProps) {
                       {(mintUrl) => (
                         <li class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                           <div class="flex flex-wrap items-center justify-between gap-2">
-                            <span
-                              class="truncate font-mono text-xs text-slate-700"
-                              title={mintUrl}
-                            >
+                            <span class="truncate font-mono text-xs text-slate-700" title={mintUrl}>
                               {truncateUrl(mintUrl, 32)}
                             </span>
                             <span class="text-sm font-semibold text-slate-900">

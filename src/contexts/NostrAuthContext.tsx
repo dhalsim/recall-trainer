@@ -126,7 +126,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     };
   });
 
-  createEffect(async () => {
+  createEffect(() => {
     checkNip55Callback();
 
     const nip55Result = getNip55Result();
@@ -185,8 +185,10 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
             break;
           case 'nip07': {
-            const p = await delay(createNip07Provider, 2000);
-            setProvider(p);
+            delay(createNip07Provider, 2000).then((p) => {
+              setProvider(p);
+            });
+
             break;
           }
 
