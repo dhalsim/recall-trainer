@@ -1,8 +1,8 @@
 import type { JSX } from 'solid-js';
 import { createContext, createEffect, createSignal, useContext } from 'solid-js';
 
-import { createNip07Provider } from '../lib/nostr/Nip07Provider';
 import { connectBunker, createBunkerProvider } from '../lib/nostr/BunkerProvider';
+import { createNip07Provider } from '../lib/nostr/Nip07Provider';
 import {
   checkNip55Callback,
   clearNip55Result,
@@ -50,6 +50,8 @@ interface NostrAuthContextValue {
   getPublicKey: (params: GetPublicKeyParams) => Promise<string | null>;
   signEvent: (params: SignEventParams) => Promise<SignEventResult>;
   getPendingNip55SignResult: () => SignEventResult | null;
+  nip44Encrypt: (pubkey: string, plaintext: string) => Promise<string>;
+  nip44Decrypt: (pubkey: string, ciphertext: string) => Promise<string>;
 }
 
 const NostrAuthContext = createContext<NostrAuthContextValue | null>(null);
@@ -155,8 +157,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     const auth = store.state().authLoginState;
 
     if (!nip55Result || nip55Result.type !== 'get_public_key') {
-      const hasDataOrNip07 =
-        auth?.loggedIn && (auth.method === 'nip07' || auth.data !== undefined);
+      const hasDataOrNip07 = auth?.loggedIn && (auth.method === 'nip07' || auth.data !== undefined);
 
       if (!hasDataOrNip07) {
         setProvider(null);
@@ -188,6 +189,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
             setProvider(p);
             break;
           }
+
           case 'nip55':
             if (auth.data && 'pubkey' in auth.data) {
               setProvider(createNip55Provider(auth.data));
@@ -411,6 +413,34 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     return p.signEvent(params);
   };
 
+  const nip44Encrypt = async (pubkey: string, plaintext: string): Promise<string> => {
+    const p = provider();
+
+    if (!p) {
+      throw new Error('Provider not ready');
+    }
+
+    if (!p.hasCapability('nip44') || !p.nip44Encrypt) {
+      throw new Error('NIP-44 encryption is not supported by your current signer.');
+    }
+
+    return p.nip44Encrypt(pubkey, plaintext);
+  };
+
+  const nip44Decrypt = async (pubkey: string, ciphertext: string): Promise<string> => {
+    const p = provider();
+
+    if (!p) {
+      throw new Error('Provider not ready');
+    }
+
+    if (!p.hasCapability('nip44') || !p.nip44Decrypt) {
+      throw new Error('NIP-44 encryption is not supported by your current signer.');
+    }
+
+    return p.nip44Decrypt(pubkey, ciphertext);
+  };
+
   const value: NostrAuthContextValue = {
     get provider() {
       return provider();
@@ -428,6 +458,8 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     getPublicKey,
     signEvent,
     getPendingNip55SignResult,
+    nip44Encrypt,
+    nip44Decrypt,
   };
 
   return <NostrAuthContext.Provider value={value}>{props.children}</NostrAuthContext.Provider>;

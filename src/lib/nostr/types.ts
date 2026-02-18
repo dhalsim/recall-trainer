@@ -8,7 +8,7 @@ export type NostrProviderMethod =
   | 'passkey_signer'
   | 'password_signer';
 
-export type ProviderCapability = 'getRelays' | 'signEvent' | 'getPublicKey';
+export type ProviderCapability = 'getRelays' | 'signEvent' | 'getPublicKey' | 'nip44';
 
 export type SignEventParams = {
   event: EventTemplate;
@@ -30,6 +30,8 @@ export interface NostrProvider {
   signEvent: SignEvent;
   hasCapability(cap: ProviderCapability): boolean;
   getRelays?(): Promise<unknown>;
+  nip44Encrypt?(pubkey: string, plaintext: string): Promise<string>;
+  nip44Decrypt?(pubkey: string, ciphertext: string): Promise<string>;
   dispose?(): void;
 }
 

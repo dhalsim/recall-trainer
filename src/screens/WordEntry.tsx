@@ -260,6 +260,32 @@ export function WordEntry() {
     setExpandedEntryId((prev) => (prev === id ? null : id));
   };
 
+  /** Export entries as "source | target" per line and copy to clipboard. */
+  const [exportFeedback, setExportFeedback] = createSignal<string | null>(null);
+
+  const handleExport = async () => {
+    const list = entries();
+
+    if (list.length === 0) {
+      setExportFeedback(t('No entries to export.'));
+      setTimeout(() => setExportFeedback(null), 2000);
+
+      return;
+    }
+
+    const text = list.map((e) => `${e.source.text} | ${e.target.text}`).join('\n');
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setExportFeedback(t('Copied to clipboard'));
+      setTimeout(() => setExportFeedback(null), 1000);
+    } catch (err) {
+      console.error('[WordEntry] clipboard write failed:', err);
+      setExportFeedback(t('Copy failed'));
+      setTimeout(() => setExportFeedback(null), 2000);
+    }
+  };
+
   return (
     <div class="mx-auto max-w-2xl space-y-6 sm:space-y-8">
       <button
@@ -376,7 +402,21 @@ export function WordEntry() {
 
       {entries().length > 0 && (
         <div class="space-y-3">
-          <h1 class="text-2xl font-bold text-slate-900">{t('Vocabulary Entries')}</h1>
+          <div class="flex flex-wrap items-center gap-3">
+            <h1 class="text-2xl font-bold text-slate-900">{t('Vocabulary Entries')}</h1>
+            <button
+              type="button"
+              onClick={handleExport}
+              class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
+            >
+              {t('Export as text')}
+            </button>
+            {exportFeedback() && (
+              <span class="text-sm text-slate-500" role="status">
+                {exportFeedback()}
+              </span>
+            )}
+          </div>
           <label class="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"

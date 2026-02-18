@@ -13,10 +13,10 @@ import {
   generateNostrConnectUri,
   type NostrConnectData,
 } from '../lib/nostr/NostrConnectProvider';
-import { DEFAULT_WRITE_RELAYS, pool } from '../utils/nostr';
 import { createPasskeyCredentials, isPasskeySupported } from '../lib/nostr/PasskeySignerProvider';
 import { createPasswordProtectedKeypair } from '../lib/nostr/PasswordSignerProvider';
 import { store } from '../store';
+import { DEFAULT_WRITE_RELAYS, pool } from '../utils/nostr';
 
 import type { ConnectStep } from './NostrConnectModal';
 
@@ -72,6 +72,7 @@ function showPasswordLogin(flow: ConnectStep | undefined): boolean {
 export function NostrConnectAuth(props: NostrConnectAuthProps) {
   const flow = (): ConnectStep | undefined => props.flow;
   const auth = useNostrAuth();
+
   const {
     loginWithBunker,
     loginWithNostrConnect,
@@ -80,6 +81,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
     loginWithPasswordSigner,
     getPublicKey,
   } = auth;
+
   const authState = () => store.state().authLoginState;
   const [generatedUri, setGeneratedUri] = createSignal('');
   const [qrSvg, setQrSvg] = createSignal('');
@@ -125,7 +127,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
 
   function startSubscription(ephemeralData: NostrConnectData) {
     const relayList = ephemeralData.relays.filter((u) => u.trim().length > 0);
-    
+
     if (relayList.length === 0) {
       return;
     }
@@ -221,16 +223,21 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
 
       return next;
     });
+
     markRelaysChanged();
   }
 
   function removeRelay(index: number) {
     setRelays((prev) => {
-      if (prev.length <= 1) return prev;
+      if (prev.length <= 1) {
+        return prev;
+      }
+
       const next = prev.filter((_, i) => i !== index);
 
       return next;
     });
+
     markRelaysChanged();
   }
 
@@ -240,6 +247,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
     setQrSvg('');
     setIsWaitingForConnection(false);
     const sub = currentSubscription();
+
     if (sub) {
       sub.close();
       setCurrentSubscription(null);
@@ -251,6 +259,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
     setQrSvg('');
     setIsWaitingForConnection(false);
     const sub = currentSubscription();
+
     if (sub) {
       sub.close();
       setCurrentSubscription(null);
@@ -426,7 +435,10 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
                   setPasskeyLoading(true);
                   props.onError('');
                   try {
-                    const pubkey = await getPublicKey({ reason: t('Get public key for passkey verification') });
+                    const pubkey = await getPublicKey({
+                      reason: t('Get public key for passkey verification'),
+                    });
+
                     const p = auth.provider;
 
                     if (pubkey && p) {
@@ -626,10 +638,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
               }}
               class="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-400 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-800 shadow-sm transition-colors hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
             >
-              <Show
-                when={bunkerLoading()}
-                fallback={t('Connect')}
-              >
+              <Show when={bunkerLoading()} fallback={t('Connect')}>
                 <span class="inline-flex items-center gap-2">
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-b-blue-600" />
                   {t('Connecting…')}

@@ -1,4 +1,4 @@
-import { finalizeEvent, getPublicKey } from 'nostr-tools';
+import { finalizeEvent, getPublicKey, nip44 } from 'nostr-tools';
 import { decrypt as nip49Decrypt, encrypt as nip49Encrypt } from 'nostr-tools/nip49';
 
 import { assertUnreachable } from '../../utils/nostr';
@@ -87,13 +87,29 @@ export function createPasswordSigner(data: PasswordSignerData): PasswordSignerPr
         throw new Error('PASSWORD_REQUIRED');
       }
 
-      try {
-        const signedEvent = finalizeEvent(params.event, key);
+      const signedEvent = finalizeEvent(params.event, key);
 
-        return { signedEvent, provider };
-      } finally {
-        lock();
+      return { signedEvent, provider };
+    },
+
+    async nip44Encrypt(pubkey: string, plaintext: string): Promise<string> {
+      if (!key) {
+        throw new Error('PASSWORD_REQUIRED');
       }
+
+      const conversationKey = nip44.v2.utils.getConversationKey(key, pubkey);
+
+      return nip44.encrypt(plaintext, conversationKey);
+    },
+
+    async nip44Decrypt(pubkey: string, ciphertext: string): Promise<string> {
+      if (!key) {
+        throw new Error('PASSWORD_REQUIRED');
+      }
+
+      const conversationKey = nip44.v2.utils.getConversationKey(key, pubkey);
+
+      return nip44.decrypt(ciphertext, conversationKey);
     },
 
     hasCapability(cap: ProviderCapability): boolean {
@@ -103,6 +119,8 @@ export function createPasswordSigner(data: PasswordSignerData): PasswordSignerPr
         case 'getRelays':
           return false;
         case 'getPublicKey':
+          return true;
+        case 'nip44':
           return true;
         default:
           assertUnreachable(cap);

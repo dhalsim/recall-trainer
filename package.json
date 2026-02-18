@@ -10,6 +10,7 @@
     "lint": "eslint . --fix"
   },
   "dependencies": {
+    "@cashu/cashu-ts": "^3.4.1",
     "@solidjs/router": "^0.14.0",
     "i18next": "^24.2.3",
     "nostr-tools": "^2.23.1",

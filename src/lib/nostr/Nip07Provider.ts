@@ -45,6 +45,10 @@ declare global {
       getPublicKey(): Promise<string>;
       signEvent(event: EventTemplate): Promise<NostrEvent>;
       getRelays?(): Promise<RelaysEntries>;
+      nip44?: {
+        encrypt(recipientPubkey: string, plaintext: string): Promise<string>;
+        decrypt(senderPubkey: string, ciphertext: string): Promise<string>;
+      };
     };
   }
 }
@@ -120,6 +124,22 @@ export class Nip07Provider implements NostrProvider {
     }
   }
 
+  async nip44Encrypt(pubkey: string, plaintext: string): Promise<string> {
+    if (typeof window === 'undefined' || !window.nostr?.nip44?.encrypt) {
+      throw new Error('NIP-44 encrypt not available');
+    }
+
+    return window.nostr.nip44.encrypt(pubkey, plaintext);
+  }
+
+  async nip44Decrypt(pubkey: string, ciphertext: string): Promise<string> {
+    if (typeof window === 'undefined' || !window.nostr?.nip44?.decrypt) {
+      throw new Error('NIP-44 decrypt not available');
+    }
+
+    return window.nostr.nip44.decrypt(pubkey, ciphertext);
+  }
+
   hasCapability(cap: ProviderCapability): boolean {
     switch (cap) {
       case 'signEvent':
@@ -136,6 +156,13 @@ export class Nip07Provider implements NostrProvider {
         );
       case 'getPublicKey':
         return true;
+      case 'nip44':
+        return (
+          typeof window !== 'undefined' &&
+          !!window.nostr?.nip44 &&
+          typeof window.nostr.nip44.encrypt === 'function' &&
+          typeof window.nostr.nip44.decrypt === 'function'
+        );
       default:
         assertUnreachable(cap);
     }

@@ -1,4 +1,4 @@
-import { finalizeEvent, getPublicKey } from 'nostr-tools';
+import { finalizeEvent, getPublicKey, nip44 } from 'nostr-tools';
 import { decrypt as nip49Decrypt, encrypt as nip49Encrypt } from 'nostr-tools/nip49';
 
 import { assertUnreachable } from '../../utils/nostr';
@@ -259,6 +259,26 @@ export function createPasskeySigner(data: PasskeySignerData): NostrProvider {
         lock();
       }
     },
+    async nip44Encrypt(pubkey: string, plaintext: string): Promise<string> {
+      const k = await unlock();
+      try {
+        const conversationKey = nip44.v2.utils.getConversationKey(k, pubkey);
+
+        return nip44.encrypt(plaintext, conversationKey);
+      } finally {
+        lock();
+      }
+    },
+    async nip44Decrypt(pubkey: string, ciphertext: string): Promise<string> {
+      const k = await unlock();
+      try {
+        const conversationKey = nip44.v2.utils.getConversationKey(k, pubkey);
+
+        return nip44.decrypt(ciphertext, conversationKey);
+      } finally {
+        lock();
+      }
+    },
     hasCapability(cap: ProviderCapability): boolean {
       switch (cap) {
         case 'signEvent':
@@ -266,6 +286,8 @@ export function createPasskeySigner(data: PasskeySignerData): NostrProvider {
         case 'getRelays':
           return false;
         case 'getPublicKey':
+          return true;
+        case 'nip44':
           return true;
         default:
           assertUnreachable(cap);

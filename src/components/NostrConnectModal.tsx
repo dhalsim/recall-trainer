@@ -176,6 +176,7 @@ export function NostrConnectModal(props: NostrConnectModalProps) {
 
   const existingUserOptions = createMemo(() => {
     const extAvailable = nip07Available();
+
     const order: ExistingOptionId[] = [
       ...(extAvailable ? (['extension_login'] as const) : []),
       ...(isAndroid() ? (['amber_login'] as const) : []),

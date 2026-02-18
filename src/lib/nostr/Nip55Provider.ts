@@ -208,6 +208,8 @@ export class Nip55Provider implements NostrProvider {
         return false;
       case 'getPublicKey':
         return true;
+      case 'nip44':
+        return false;
       default:
         assertUnreachable(cap);
     }

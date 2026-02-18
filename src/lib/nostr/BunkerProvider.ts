@@ -4,12 +4,17 @@
  * client sends connect request then get_public_key. See https://nips.nostr.com/46
  */
 
-import { finalizeEvent, nip44 } from 'nostr-tools';
+import { finalizeEvent } from 'nostr-tools';
 import { bytesToHex, hexToBytes } from 'nostr-tools/utils';
 
-import { assertUnreachable, createKeyPair, generateRandomHexString, pool } from '../../utils/nostr';
+import { assertUnreachable, createKeyPair, pool } from '../../utils/nostr';
 
-import { decryptContent } from './NostrConnectProvider';
+import {
+  decryptContent,
+  encryptRequest,
+  NIP46_KIND,
+  sendNip46Request,
+} from './RemoteSignerHelpers';
 import type {
   BunkerSignerData,
   NostrProvider,
@@ -19,8 +24,6 @@ import type {
 } from './types';
 
 export type { BunkerSignerData };
-
-const NIP46_KIND = 24133;
 const DEFAULT_PERMS = 'sign_event,get_public_key';
 
 export interface ParsedBunkerUrl {
@@ -62,20 +65,6 @@ export function parseBunkerUrl(bunkerUrl: string): ParsedBunkerUrl {
   }
 
   return { remoteSignerPubkey, relays, secret };
-}
-
-function encryptRequest(
-  method: string,
-  params: string[],
-  clientSecret: Uint8Array,
-  remoteSignerPubkey: string,
-): { encrypted: string; id: string } {
-  const id = generateRandomHexString(16);
-  const conversationKey = nip44.v2.utils.getConversationKey(clientSecret, remoteSignerPubkey);
-
-  const encrypted = nip44.encrypt(JSON.stringify({ id, method, params }), conversationKey);
-
-  return { encrypted, id };
 }
 
 /**
@@ -184,95 +173,28 @@ export function connectBunker(bunkerUrl: string): Promise<BunkerSignerData> {
   });
 }
 
-function requestGetPublicKey(
+async function requestGetPublicKey(
   clientPubkey: string,
   clientSecret: Uint8Array,
   remoteSignerPubkey: string,
   relays: string[],
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const { encrypted: content, id } = encryptRequest(
-      'get_public_key',
-      [],
-      clientSecret,
-      remoteSignerPubkey,
-    );
-
-    const template = {
-      kind: NIP46_KIND,
-      pubkey: clientPubkey,
-      content,
-      tags: [['p', remoteSignerPubkey]],
-      created_at: Math.floor(Date.now() / 1000),
-    };
-
-    const event = finalizeEvent(template, clientSecret);
-
-    const sub = pool.subscribe(
-      relays,
-      {
-        kinds: [NIP46_KIND],
-        authors: [remoteSignerPubkey],
-        '#p': [clientPubkey],
-        limit: 1,
-      },
-      {
-        onevent: (ev) => {
-          if (ev.kind !== NIP46_KIND || ev.pubkey !== remoteSignerPubkey) {
-            return;
-          }
-
-          const decrypted = decryptContent(ev.content, ev.pubkey, clientSecret);
-
-          if (!decrypted) {
-            sub.close();
-            reject(new Error('Failed to decrypt get_public_key response'));
-
-            return;
-          }
-
-          let parsed: { id: string; result?: string; error?: string };
-
-          try {
-            parsed = JSON.parse(decrypted);
-          } catch {
-            sub.close();
-            reject(new Error('Invalid get_public_key response'));
-
-            return;
-          }
-
-          if (parsed.id !== id) {
-            return;
-          }
-
-          if (parsed.error) {
-            sub.close();
-            reject(new Error(parsed.error));
-
-            return;
-          }
-
-          const pubkey = parsed.result?.trim();
-
-          if (!pubkey || !/^[a-fA-F0-9]{64}$/.test(pubkey)) {
-            sub.close();
-            reject(new Error('Invalid get_public_key result'));
-
-            return;
-          }
-
-          sub.close();
-          resolve(pubkey);
-        },
-      },
-    );
-
-    void Promise.allSettled(pool.publish(relays, event)).catch((err) => {
-      sub.close();
-      reject(err);
-    });
+  const response = await sendNip46Request({
+    relays,
+    ephemeralSecret: clientSecret,
+    ephemeralPubkey: clientPubkey,
+    remoteSignerPubkey,
+    method: 'get_public_key',
+    params: [],
   });
+
+  const pubkey = response.result?.trim();
+
+  if (!pubkey || !/^[a-fA-F0-9]{64}$/.test(pubkey)) {
+    throw new Error('Invalid get_public_key result');
+  }
+
+  return pubkey;
 }
 
 export class BunkerProvider implements NostrProvider {
@@ -293,99 +215,76 @@ export class BunkerProvider implements NostrProvider {
   }
 
   async signEvent(params: SignEventParams): Promise<SignEventResult> {
-    const id = generateRandomHexString(16);
-    const ephemeralSecret = hexToBytes(this.data.ephemeralSecret);
-
-    const conversationKey = nip44.v2.utils.getConversationKey(
-      ephemeralSecret,
-      this.data.remoteSignerPubkey,
-    );
-
-    const encryptedContent = nip44.encrypt(
-      JSON.stringify({
-        id,
-        method: 'sign_event',
-        params: [JSON.stringify(params.event)],
-      }),
-      conversationKey,
-    );
-
-    const template = {
-      kind: NIP46_KIND,
-      pubkey: this.data.ephemeralPubkey,
-      content: encryptedContent,
-      tags: [['p', this.data.remoteSignerPubkey]],
-      created_at: Math.floor(Date.now() / 1000),
-    };
-
-    const signedEvent = finalizeEvent(template, ephemeralSecret);
     const relays = this.data.relays.filter((u) => u.trim().length > 0);
 
     if (relays.length === 0) {
       throw new Error('No relay configured for Bunker');
     }
 
-    await Promise.allSettled(pool.publish(relays, signedEvent));
+    const ephemeralSecret = hexToBytes(this.data.ephemeralSecret);
 
-    return new Promise((resolve, reject) => {
-      const sub = pool.subscribe(
-        relays,
-        {
-          kinds: [NIP46_KIND],
-          authors: [this.data.remoteSignerPubkey],
-          '#p': [this.data.ephemeralPubkey],
-          limit: 1,
-        },
-        {
-          onevent: (event) => {
-            if (event.kind !== NIP46_KIND || event.pubkey !== this.data.remoteSignerPubkey) {
-              return;
-            }
-
-            const decrypted = decryptContent(event.content, event.pubkey, ephemeralSecret);
-
-            if (!decrypted) {
-              sub.close();
-              reject(new Error('Failed to decrypt sign_event response'));
-
-              return;
-            }
-
-            let parsed: { id: string; result?: string; error?: string };
-
-            try {
-              parsed = JSON.parse(decrypted);
-            } catch (e) {
-              sub.close();
-              reject(e);
-
-              return;
-            }
-
-            if (parsed.id !== id) {
-              return;
-            }
-
-            if (parsed.error) {
-              sub.close();
-              reject(new Error(parsed.error));
-
-              return;
-            }
-
-            try {
-              const signed = JSON.parse(parsed.result ?? 'null') as SignEventResult['signedEvent'];
-
-              sub.close();
-              resolve({ signedEvent: signed, provider: this });
-            } catch (e) {
-              sub.close();
-              reject(e);
-            }
-          },
-        },
-      );
+    const response = await sendNip46Request({
+      relays,
+      ephemeralSecret,
+      ephemeralPubkey: this.data.ephemeralPubkey,
+      remoteSignerPubkey: this.data.remoteSignerPubkey,
+      method: 'sign_event',
+      params: [JSON.stringify(params.event)],
     });
+
+    const signed = JSON.parse(response.result ?? 'null') as SignEventResult['signedEvent'];
+
+    return { signedEvent: signed, provider: this };
+  }
+
+  async nip44Encrypt(pubkey: string, plaintext: string): Promise<string> {
+    const relays = this.data.relays.filter((u) => u.trim().length > 0);
+
+    if (relays.length === 0) {
+      throw new Error('No relay configured for Bunker');
+    }
+
+    const ephemeralSecret = hexToBytes(this.data.ephemeralSecret);
+
+    const response = await sendNip46Request({
+      relays,
+      ephemeralSecret,
+      ephemeralPubkey: this.data.ephemeralPubkey,
+      remoteSignerPubkey: this.data.remoteSignerPubkey,
+      method: 'nip44_encrypt',
+      params: [pubkey, plaintext],
+    });
+
+    if (response.result === undefined) {
+      throw new Error('nip44_encrypt returned no result');
+    }
+
+    return response.result;
+  }
+
+  async nip44Decrypt(pubkey: string, ciphertext: string): Promise<string> {
+    const relays = this.data.relays.filter((u) => u.trim().length > 0);
+
+    if (relays.length === 0) {
+      throw new Error('No relay configured for Bunker');
+    }
+
+    const ephemeralSecret = hexToBytes(this.data.ephemeralSecret);
+
+    const response = await sendNip46Request({
+      relays,
+      ephemeralSecret,
+      ephemeralPubkey: this.data.ephemeralPubkey,
+      remoteSignerPubkey: this.data.remoteSignerPubkey,
+      method: 'nip44_decrypt',
+      params: [pubkey, ciphertext],
+    });
+
+    if (response.result === undefined) {
+      throw new Error('nip44_decrypt returned no result');
+    }
+
+    return response.result;
   }
 
   hasCapability(cap: ProviderCapability): boolean {
@@ -395,6 +294,8 @@ export class BunkerProvider implements NostrProvider {
       case 'getRelays':
         return false;
       case 'getPublicKey':
+        return true;
+      case 'nip44':
         return true;
       default:
         assertUnreachable(cap);

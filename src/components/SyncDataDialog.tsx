@@ -105,7 +105,10 @@ export function SyncDataDialog(props: SyncDataDialogProps) {
                         <button
                           type="button"
                           onClick={async () => {
-                            if (!pk) return;
+                            if (!pk) {
+                              return;
+                            }
+
                             await pushSyncData({
                               publishRelays: getPublishRelays(pk),
                               getPublicKey: auth.getPublicKey,
@@ -124,7 +127,11 @@ export function SyncDataDialog(props: SyncDataDialogProps) {
                           type="button"
                           onClick={() => {
                             const key = auth.pubkey();
-                            if (!key) return;
+
+                            if (!key) {
+                              return;
+                            }
+
                             pullSyncData(key);
                           }}
                           class="rounded-lg bg-green-100 px-3 py-2 text-sm font-medium text-green-800 transition-colors hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50"
@@ -132,6 +139,27 @@ export function SyncDataDialog(props: SyncDataDialogProps) {
                           {t('Pull from relays')}
                         </button>
                       </Show>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!pk) {
+                            return;
+                          }
+
+                          await pushSyncData({
+                            publishRelays: getPublishRelays(pk),
+                            getPublicKey: auth.getPublicKey,
+                            signEvent: auth.signEvent,
+                            onSuccess: () => {},
+                            onError: () => {},
+                          });
+                        }}
+                        class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 disabled:opacity-50"
+                      >
+                        {t('Force push to relays')}
+                      </button>
                     </div>
                     <div class="space-y-0.5 text-xs text-slate-500">
                       <p>
