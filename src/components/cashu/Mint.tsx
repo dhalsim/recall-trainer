@@ -50,7 +50,7 @@ export function Mint(props: MintProps) {
           <div class="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={props.onReceive}
+              onClick={() => props.onReceive?.()}
               class="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {t('Receive')}
@@ -58,7 +58,7 @@ export function Mint(props: MintProps) {
             <button
               type="button"
               disabled={props.balance === 0}
-              onClick={props.onSend}
+              onClick={() => props.onSend?.()}
               class="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-800 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t('Send')}
@@ -68,7 +68,7 @@ export function Mint(props: MintProps) {
             </span>
             <button
               type="button"
-              onClick={props.onHistory}
+              onClick={() => props.onHistory?.()}
               class="rounded bg-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-400"
             >
               {t('History')}
@@ -82,7 +82,7 @@ export function Mint(props: MintProps) {
         <div class="mt-4 space-y-4">
           <button
             type="button"
-            onClick={state()!.onClosePanel}
+            onClick={() => state()?.onClosePanel?.()}
             class="text-sm text-slate-600 hover:underline"
           >
             ← {t('Back')}
@@ -103,7 +103,7 @@ export function Mint(props: MintProps) {
           </Show>
           <button
             type="button"
-            onClick={state()!.onReceiveSubmit}
+            onClick={() => state()?.onReceiveSubmit?.()}
             disabled={state()!.loadingOp}
             class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
           >
@@ -117,7 +117,7 @@ export function Mint(props: MintProps) {
         <div class="mt-4 space-y-4">
           <button
             type="button"
-            onClick={state()!.onClosePanel}
+            onClick={() => state()?.onClosePanel?.()}
             class="text-sm text-slate-600 hover:underline"
           >
             ← {t('Back')}
@@ -139,7 +139,7 @@ export function Mint(props: MintProps) {
             </Show>
             <button
               type="button"
-              onClick={state()!.onSendSubmit}
+              onClick={() => state()?.onSendSubmit?.()}
               disabled={state()!.loadingOp}
               class="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
             >
@@ -156,7 +156,7 @@ export function Mint(props: MintProps) {
             />
             <button
               type="button"
-              onClick={state()!.onClosePanel}
+              onClick={() => state()?.onClosePanel?.()}
               class="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
             >
               {t('Done')}
@@ -170,7 +170,7 @@ export function Mint(props: MintProps) {
         <div class="mt-4 space-y-4">
           <button
             type="button"
-            onClick={state()!.onClosePanel}
+            onClick={() => state()?.onClosePanel?.()}
             class="text-sm text-slate-600 hover:underline"
           >
             ← {t('Back')}

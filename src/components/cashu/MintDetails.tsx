@@ -38,7 +38,11 @@ export function MintDetails(props: MintDetailsProps) {
 
   return (
     <div class="mt-4 space-y-4">
-      <button type="button" onClick={props.onBack} class="text-sm text-slate-600 hover:underline">
+      <button
+        type="button"
+        onClick={() => props.onBack?.()}
+        class="text-sm text-slate-600 hover:underline"
+      >
         ← {t('Back')}
       </button>
 

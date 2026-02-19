@@ -43,7 +43,7 @@ export function MintDiscovery(props: MintDiscoveryProps) {
         <div class="flex flex-wrap items-center justify-between gap-2">
           <button
             type="button"
-            onClick={props.onBack}
+            onClick={() => props.onBack?.()}
             class="text-sm text-slate-600 hover:underline"
           >
             ← {t('Back')}
@@ -55,7 +55,7 @@ export function MintDiscovery(props: MintDiscoveryProps) {
             </span>
             <button
               type="button"
-              onClick={props.onRefresh}
+              onClick={() => props.onRefresh?.()}
               disabled={props.store.loading || props.isSyncing()}
               class="rounded bg-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
