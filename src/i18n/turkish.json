@@ -213,5 +213,16 @@
   "Enter a valid amount.": "Geçerli bir miktar girin.",
   "Publish token event": "Token olayı yayınla",
   "Failed to receive token.": "Token alınamadı.",
-  "Failed to send.": "Gönderilemedi."
+  "Failed to send.": "Gönderilemedi.",
+  "Discover mints": "Darphaneleri keşfet",
+  "Discovering…": "Keşfediliyor…",
+  "Syncing…": "Senkronize ediliyor…",
+  "No mints found.": "Darphane bulunamadı.",
+  "Add to wallet": "Cüzdana ekle",
+  "Rating": "Puan",
+  "Reviews": "İncelemeler",
+  "Mint info": "Darphane bilgisi",
+  "Network": "Ağ",
+  "No reviews yet.": "Henüz inceleme yok.",
+  "Details": "Detaylar"
 }

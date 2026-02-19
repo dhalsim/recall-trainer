@@ -213,5 +213,16 @@
   "Enter a valid amount.": "有効な数量を入力してください。",
   "Publish token event": "トークンイベントを公開",
   "Failed to receive token.": "トークンの受け取りに失敗しました。",
-  "Failed to send.": "送信に失敗しました。"
+  "Failed to send.": "送信に失敗しました。",
+  "Discover mints": "ミントを探す",
+  "Discovering…": "検索中…",
+  "Syncing…": "同期中…",
+  "No mints found.": "ミントが見つかりませんでした。",
+  "Add to wallet": "ウォレットに追加",
+  "Rating": "評価",
+  "Reviews": "レビュー",
+  "Mint info": "ミント情報",
+  "Network": "ネットワーク",
+  "No reviews yet.": "レビューはまだありません。",
+  "Details": "詳細"
 }

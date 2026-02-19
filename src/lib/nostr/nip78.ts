@@ -5,48 +5,12 @@ import { t } from '../../i18n';
 import type { AppState, SyncPayload } from '../../store';
 import { store } from '../../store';
 import { pool } from '../../utils/nostr';
+import { readSyncMeta, writeSyncMeta } from '../syncMeta';
 
 import type { GetPublicKey, SignEvent } from './types';
 
 /** NIP-78 sync data d-tag for this app. */
 export const NIP78_D_TAG = 'recall-trainer-sync-data';
-
-// --- Sync meta (localStorage, key: recall-trainer-sync-meta-${pubkey}) ---
-
-const SYNC_META_KEY_PREFIX = 'recall-trainer-sync-meta-';
-
-function getSyncMetaKey(pubkey: string): string {
-  return `${SYNC_META_KEY_PREFIX}${pubkey}`;
-}
-
-function readLastSyncedAtFromStorage(pubkey: string): number | null {
-  try {
-    const raw = localStorage.getItem(getSyncMetaKey(pubkey));
-
-    if (!raw) {
-      return null;
-    }
-
-    const parsed = JSON.parse(raw) as { lastSyncedEventCreatedAt?: number };
-
-    return typeof parsed.lastSyncedEventCreatedAt === 'number'
-      ? parsed.lastSyncedEventCreatedAt
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeLastSyncedAtToStorage(pubkey: string, createdAt: number): void {
-  try {
-    localStorage.setItem(
-      getSyncMetaKey(pubkey),
-      JSON.stringify({ lastSyncedEventCreatedAt: createdAt }),
-    );
-  } catch (err) {
-    console.error('[nip78] Failed to save sync meta:', err);
-  }
-}
 
 // --- Sync payload (whitelist) ---
 
@@ -78,7 +42,7 @@ const [lastSyncedAt, setLastSyncedAt] = createSignal<number | null>(null);
 const [syncingDirection, setSyncingDirection] = createSignal<'push' | 'pull' | null>(null);
 
 function updateLastSyncedAt(createdAt: number, pubkey: string): void {
-  writeLastSyncedAtToStorage(pubkey, createdAt);
+  writeSyncMeta(pubkey, 'nip78', createdAt);
   setLastSyncedAt(createdAt);
 }
 
@@ -147,7 +111,7 @@ function logCloseReasons(reasons: string[]): void {
  * Call on login; return value is unsubscribe (call on logout).
  */
 export function subscribeSyncEvents(relays: string[], pubkey: string): () => void {
-  setLastSyncedAt(readLastSyncedAtFromStorage(pubkey));
+  setLastSyncedAt(readSyncMeta(pubkey)?.nip78 ?? null);
 
   let bestCreatedAt = lastSyncedAt() ?? 0;
 

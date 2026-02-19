@@ -1,0 +1,700 @@
+import { getEncodedToken, sumProofs, Wallet } from '@cashu/cashu-ts';
+import type { Proof } from '@cashu/cashu-ts';
+import { createEffect, createSignal, Show, For } from 'solid-js';
+import { createStore, reconcile } from 'solid-js/store';
+
+import { useNostrAuth } from '../../contexts/NostrAuthContext';
+import { t } from '../../i18n';
+import { backgroundSync, loadFromDB, type DiscoverStore } from '../../lib/cashu/discoverCache';
+import type { Nip60WalletContent } from '../../lib/cashu/nip60';
+import {
+  buildTokenEventTemplate,
+  buildWalletEventTemplate,
+  decryptTokenContent,
+  decryptWalletContent,
+  queryTokens,
+  queryWallet,
+  walletContentToArray,
+} from '../../lib/cashu/nip60';
+import type { Nip65Relays } from '../../lib/nostr/nip65';
+import { getRelays } from '../../lib/nostr/nip65';
+import { readSyncMeta, writeSyncMeta } from '../../lib/syncMeta';
+import {
+  DEFAULT_READ_RELAYS,
+  DEFAULT_WRITE_RELAYS,
+  generateRandomHexString,
+  pool,
+} from '../../utils/nostr';
+
+import { Mint, type MintPanelState, type MintPanelType } from './Mint';
+import { MintDiscovery } from './MintDiscovery';
+
+export interface WalletDialogProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+type WalletState = 'loading' | 'no-wallet' | 'loaded' | 'error';
+
+function getReadRelays(pubkey: string): string[] {
+  const nip65 = getRelays(pubkey) as Nip65Relays | undefined;
+
+  return nip65?.readRelays?.length ? nip65.readRelays : DEFAULT_READ_RELAYS;
+}
+
+function getWriteRelays(pubkey: string): string[] {
+  const nip65 = getRelays(pubkey) as Nip65Relays | undefined;
+
+  return nip65?.writeRelays?.length ? nip65.writeRelays : DEFAULT_WRITE_RELAYS;
+}
+
+export function WalletDialog(props: WalletDialogProps) {
+  const auth = useNostrAuth();
+  const [walletState, setWalletState] = createSignal<WalletState>('loading');
+  const [errorMessage, setErrorMessage] = createSignal<string | null>(null);
+  const [walletContent, setWalletContent] = createSignal<Nip60WalletContent | null>(null);
+  const [proofsByMint, setProofsByMint] = createSignal<Map<string, Proof[]>>(new Map());
+  const [pendingSentByMint, setPendingSentByMint] = createSignal<Map<string, Proof[]>>(new Map());
+  const [showCreateForm, setShowCreateForm] = createSignal(false);
+  const [showAddMint, setShowAddMint] = createSignal(false);
+  const [createMintUrls, setCreateMintUrls] = createSignal<string[]>(['']);
+  const [creating, setCreating] = createSignal(false);
+  const [addMintUrl, setAddMintUrl] = createSignal('');
+  const [mintPanel, setMintPanel] = createSignal<MintPanelType>(null);
+  const [selectedMintUrl, setSelectedMintUrl] = createSignal<string | null>(null);
+  const [receiveTokenInput, setReceiveTokenInput] = createSignal('');
+  const [sendAmountInput, setSendAmountInput] = createSignal('');
+  const [sentTokenEncoded, setSentTokenEncoded] = createSignal<string | null>(null);
+  const [loadingOp, setLoadingOp] = createSignal(false);
+  const [showDiscoverPanel, setShowDiscoverPanel] = createSignal(false);
+
+  const [discoverStore, setDiscoverStore] = createStore<DiscoverStore>({
+    mints: {},
+    loading: false,
+    syncing: false,
+    error: null,
+  });
+
+  const loadWallet = async (): Promise<void> => {
+    const pubkey = auth.pubkey();
+
+    if (!pubkey) {
+      setWalletState('error');
+      setErrorMessage(t('Could not get public key.'));
+
+      return;
+    }
+
+    if (!auth.provider?.hasCapability('nip44')) {
+      setWalletState('error');
+      setErrorMessage(t('NIP-44 encryption is not supported by your current signer.'));
+
+      return;
+    }
+
+    setWalletState('loading');
+    setErrorMessage(null);
+
+    const readRelays = getReadRelays(pubkey);
+
+    try {
+      const walletEvent = await queryWallet(readRelays, pubkey);
+
+      if (!walletEvent) {
+        setWalletState('no-wallet');
+        setWalletContent(null);
+        setProofsByMint(new Map());
+
+        return;
+      }
+
+      const content = await decryptWalletContent(walletEvent, auth.nip44Decrypt, pubkey);
+
+      setWalletContent(content);
+
+      const tokenEvents = await queryTokens(readRelays, pubkey);
+      const byMint = new Map<string, Proof[]>();
+
+      for (const ev of tokenEvents) {
+        const decrypted = await decryptTokenContent(ev, auth.nip44Decrypt, pubkey);
+
+        if (decrypted) {
+          const cur = byMint.get(decrypted.mint) ?? [];
+          byMint.set(decrypted.mint, [...cur, ...decrypted.proofs]);
+        }
+      }
+
+      setProofsByMint(byMint);
+      setWalletState('loaded');
+    } catch (err) {
+      console.error('[CashuWallet] Load failed:', err);
+      setWalletState('error');
+      setErrorMessage(t('Failed to load wallet.'));
+    }
+  };
+
+  createEffect(() => {
+    if (props.open && auth.isLoggedIn()) {
+      void loadWallet();
+    }
+  });
+
+  const handleCreateWallet = async (): Promise<void> => {
+    const pubkey = auth.pubkey();
+
+    if (!pubkey) {
+      setErrorMessage(t('Could not get public key.'));
+
+      return;
+    }
+
+    const urls = createMintUrls().filter((u) => u.trim().length > 0);
+
+    if (urls.length === 0) {
+      setErrorMessage(t('Enter a valid mint URL.'));
+
+      return;
+    }
+
+    setCreating(true);
+    setErrorMessage(null);
+
+    try {
+      const privkey = generateRandomHexString(64);
+      const content: Nip60WalletContent = { privkey, mints: urls };
+
+      const encrypted = await auth.nip44Encrypt(
+        pubkey,
+        JSON.stringify(walletContentToArray(content)),
+      );
+
+      const template = buildWalletEventTemplate(encrypted);
+
+      const { signedEvent } = await auth.signEvent({
+        event: template,
+        reason: t('Create Cashu wallet'),
+      });
+
+      const writeRelays = getWriteRelays(pubkey);
+      pool.publish(writeRelays, signedEvent);
+
+      setWalletContent(content);
+      setProofsByMint(new Map());
+      setWalletState('loaded');
+      setShowCreateForm(false);
+      setCreateMintUrls(['']);
+    } catch (err) {
+      console.error('[CashuWallet] Create failed:', err);
+      setErrorMessage(t('Failed to create wallet.'));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleAddMint = (url?: string): void => {
+    const urlToAdd = (url ?? addMintUrl().trim()).trim();
+
+    if (!urlToAdd) {
+      setErrorMessage(t('Enter a valid mint URL.'));
+
+      return;
+    }
+
+    const content = walletContent();
+
+    if (!content) {
+      return;
+    }
+
+    const newMints = [...content.mints, urlToAdd];
+    const updated: Nip60WalletContent = { ...content, mints: newMints };
+
+    setWalletContent(updated);
+    setAddMintUrl('');
+    setShowAddMint(false);
+    setShowDiscoverPanel(false);
+    setErrorMessage(null);
+
+    void (async () => {
+      const pk = auth.pubkey();
+
+      if (!pk) {
+        return;
+      }
+
+      try {
+        const encrypted = await auth.nip44Encrypt(
+          pk,
+          JSON.stringify(walletContentToArray(updated)),
+        );
+
+        const template = buildWalletEventTemplate(encrypted);
+
+        const { signedEvent } = await auth.signEvent({
+          event: template,
+          reason: t('Add mint to wallet'),
+        });
+
+        const writeRelays = getWriteRelays(pk);
+        pool.publish(writeRelays, signedEvent);
+      } catch (err) {
+        console.error('[CashuWallet] Add mint publish failed:', err);
+        setErrorMessage(t('Failed to create wallet.'));
+      }
+    })();
+  };
+
+  const addCreateMintRow = (): void => {
+    setCreateMintUrls((prev) => [...prev, '']);
+  };
+
+  const setCreateMintUrlAt = (index: number, value: string): void => {
+    setCreateMintUrls((prev) => {
+      const next = [...prev];
+      next[index] = value;
+
+      return next;
+    });
+  };
+
+  const publishTokenEvent = async (mintUrl: string, proofs: Proof[]): Promise<void> => {
+    const pk = auth.pubkey();
+
+    if (!pk) {
+      return;
+    }
+
+    const encrypted = await auth.nip44Encrypt(pk, JSON.stringify({ mint: mintUrl, proofs }));
+
+    const template = buildTokenEventTemplate(encrypted);
+
+    const { signedEvent } = await auth.signEvent({
+      event: template,
+      reason: t('Publish token event'),
+    });
+
+    const writeRelays = getWriteRelays(pk);
+    pool.publish(writeRelays, signedEvent);
+  };
+
+  const openReceive = (mintUrl: string): void => {
+    setSelectedMintUrl(mintUrl);
+    setMintPanel('receive');
+    setReceiveTokenInput('');
+    setSentTokenEncoded(null);
+    setErrorMessage(null);
+  };
+
+  const openSend = (mintUrl: string): void => {
+    setSelectedMintUrl(mintUrl);
+    setMintPanel('send');
+    setSendAmountInput('');
+    setSentTokenEncoded(null);
+    setErrorMessage(null);
+  };
+
+  const closeMintPanel = (): void => {
+    setMintPanel(null);
+    setSelectedMintUrl(null);
+    setSentTokenEncoded(null);
+    setErrorMessage(null);
+  };
+
+  const STALE_DISCOVER_SECONDS = 24 * 60 * 60; // 1 day
+
+  const runDiscoverBackgroundSync = (force: boolean): Promise<void> => {
+    const pubkey = auth.pubkey();
+
+    if (!pubkey) {
+      return Promise.resolve();
+    }
+
+    const meta = readSyncMeta(pubkey);
+    const lastSync = meta?.discoverMints ?? null;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+
+    if (!force && lastSync != null && nowSeconds - lastSync < STALE_DISCOVER_SECONDS) {
+      return Promise.resolve();
+    }
+
+    setDiscoverStore('syncing', true);
+    const relays = getReadRelays(pubkey);
+
+    return backgroundSync(relays, (url, info) => {
+      setDiscoverStore('mints', url, 'mintInfo', info);
+    })
+      .then((result) => {
+        setDiscoverStore('mints', reconcile(result.mints));
+        writeSyncMeta(pubkey, 'discoverMints', Math.floor(Date.now() / 1000));
+      })
+      .catch((err) => {
+        console.error('[CashuWallet] Discover mints failed:', err);
+        setDiscoverStore('error', t('No mints found.'));
+      })
+      .finally(() => {
+        setDiscoverStore('syncing', false);
+      });
+  };
+
+  const openDiscoverPanel = (): void => {
+    setShowDiscoverPanel(true);
+    setDiscoverStore('error', null);
+    setDiscoverStore('loading', true);
+
+    void loadFromDB()
+      .then((mints) => {
+        setDiscoverStore('mints', reconcile(mints));
+        setDiscoverStore('loading', false);
+
+        return runDiscoverBackgroundSync(false);
+      })
+      .catch((err) => {
+        console.error('[CashuWallet] Discover load failed:', err);
+        setDiscoverStore('error', t('No mints found.'));
+        setDiscoverStore('loading', false);
+        setDiscoverStore('syncing', false);
+      });
+  };
+
+  const handleReceive = async (): Promise<void> => {
+    const mintUrl = selectedMintUrl();
+    const tokenStr = receiveTokenInput().trim();
+
+    if (!mintUrl || !tokenStr) {
+      setErrorMessage(t('Paste a Cashu token.'));
+
+      return;
+    }
+
+    setLoadingOp(true);
+    setErrorMessage(null);
+    try {
+      const wallet = new Wallet(mintUrl, { unit: 'sat' });
+      await wallet.loadMint();
+
+      const newProofs = await wallet.ops
+        .receive(tokenStr)
+        .asDeterministic()
+        .requireDleq(true)
+        .run();
+
+      const prev = proofsByMint().get(mintUrl) ?? [];
+      const merged = [...prev, ...newProofs];
+
+      setProofsByMint((m) => {
+        const next = new Map(m);
+        next.set(mintUrl, merged);
+
+        return next;
+      });
+
+      await publishTokenEvent(mintUrl, merged);
+      closeMintPanel();
+    } catch (err) {
+      console.error('[CashuWallet] Receive failed:', err);
+      setErrorMessage(err instanceof Error ? err.message : t('Failed to receive token.'));
+    } finally {
+      setLoadingOp(false);
+    }
+  };
+
+  const handleSend = async (): Promise<void> => {
+    const mintUrl = selectedMintUrl();
+    const amount = Number.parseInt(sendAmountInput().trim(), 10);
+
+    if (!mintUrl || Number.isNaN(amount) || amount <= 0) {
+      setErrorMessage(t('Enter a valid amount.'));
+
+      return;
+    }
+
+    const proofs = proofsByMint().get(mintUrl) ?? [];
+    const balance = sumProofs(proofs);
+
+    if (amount > balance) {
+      setErrorMessage(t('Insufficient balance.'));
+
+      return;
+    }
+
+    setLoadingOp(true);
+    setErrorMessage(null);
+    try {
+      const wallet = new Wallet(mintUrl, { unit: 'sat' });
+      await wallet.loadMint();
+
+      const { keep, send: toSend } = await wallet.ops
+        .send(amount, proofs)
+        .asDeterministic()
+        .includeFees(true)
+        .run();
+
+      const token = { mint: mintUrl, proofs: toSend };
+      const encoded = getEncodedToken(token);
+      setSentTokenEncoded(encoded);
+
+      setProofsByMint((m) => {
+        const next = new Map(m);
+        next.set(mintUrl, keep);
+
+        return next;
+      });
+
+      setPendingSentByMint((p) => {
+        const next = new Map(p);
+        const cur = next.get(mintUrl) ?? [];
+        next.set(mintUrl, [...cur, ...toSend]);
+
+        return next;
+      });
+
+      await publishTokenEvent(mintUrl, keep);
+    } catch (err) {
+      console.error('[CashuWallet] Send failed:', err);
+      setErrorMessage(err instanceof Error ? err.message : t('Failed to send.'));
+    } finally {
+      setLoadingOp(false);
+    }
+  };
+
+  const balanceForMint = (mintUrl: string): number => sumProofs(proofsByMint().get(mintUrl) ?? []);
+
+  const pendingCountForMint = (mintUrl: string): number =>
+    (pendingSentByMint().get(mintUrl) ?? []).length;
+
+  const mintPanelState = (): MintPanelState | undefined => {
+    const url = selectedMintUrl();
+
+    if (!url || !mintPanel()) {
+      return undefined;
+    }
+
+    return {
+      receiveTokenInput: receiveTokenInput(),
+      setReceiveTokenInput: setReceiveTokenInput,
+      sendAmountInput: sendAmountInput(),
+      setSendAmountInput: setSendAmountInput,
+      sentTokenEncoded: sentTokenEncoded(),
+      loadingOp: loadingOp(),
+      errorMessage: errorMessage(),
+      onReceiveSubmit: () => void handleReceive(),
+      onSendSubmit: () => void handleSend(),
+      onClosePanel: closeMintPanel,
+    };
+  };
+
+  return (
+    <Show when={props.open}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cashu-wallet-title"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            props.onClose();
+          }
+        }}
+      >
+        <div class="fixed inset-0 bg-slate-900/50" aria-hidden="true" />
+        <div
+          class="relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-slate-200 bg-white shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div class="flex-shrink-0 border-b border-slate-100 px-6 py-4">
+            <h2 id="cashu-wallet-title" class="text-lg font-semibold text-slate-900">
+              {t('Wallet')}
+            </h2>
+          </div>
+          <div class="min-h-0 flex-1 overflow-y-auto p-6">
+            <Show when={!auth.isLoggedIn()}>
+              <p class="mt-4 text-sm text-slate-500">
+                {t('Sign in with Nostr to use the Cashu wallet.')}
+              </p>
+            </Show>
+
+            <Show when={auth.isLoggedIn()}>
+              <Show when={walletState() === 'loading'}>
+                <p class="mt-4 text-sm text-slate-600">{t('Loading wallets...')}</p>
+              </Show>
+
+              <Show when={walletState() === 'error'}>
+                <p class="mt-4 text-sm text-red-600">{errorMessage()}</p>
+              </Show>
+
+              <Show when={walletState() === 'no-wallet' && !showCreateForm()}>
+                <p class="mt-4 text-sm text-slate-600">{t('No wallets found for this account.')}</p>
+                <p class="mt-2 text-sm text-slate-500">
+                  {t('Create a new wallet and transfer funds to it.')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(true)}
+                  class="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  {t('Create Wallet')}
+                </button>
+              </Show>
+
+              <Show when={walletState() === 'no-wallet' && showCreateForm()}>
+                <div class="mt-4 space-y-4">
+                  <div>
+                    <p class="text-sm font-medium text-slate-700">{t('Add Mint')}</p>
+                    <For each={createMintUrls()}>
+                      {(url, i) => (
+                        <div class="mt-2 flex gap-2">
+                          <input
+                            type="url"
+                            placeholder={t('Mint URL')}
+                            value={url}
+                            onInput={(e) => setCreateMintUrlAt(i(), e.currentTarget.value)}
+                            class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                      )}
+                    </For>
+                    <button
+                      type="button"
+                      onClick={addCreateMintRow}
+                      class="mt-2 text-sm text-blue-600 hover:underline"
+                    >
+                      + {t('Add Mint')}
+                    </button>
+                  </div>
+                  <Show when={errorMessage()}>
+                    <p class="text-sm text-red-600">{errorMessage()}</p>
+                  </Show>
+                  <div class="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCreateForm(false);
+                        setErrorMessage(null);
+                      }}
+                      class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
+                    >
+                      {t('Back')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCreateWallet()}
+                      disabled={creating()}
+                      class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+                    >
+                      {creating() ? t('Creating wallet...') : t('Create Wallet')}
+                    </button>
+                  </div>
+                </div>
+              </Show>
+
+              <Show when={walletState() === 'loaded' && showDiscoverPanel()}>
+                <MintDiscovery
+                  store={discoverStore}
+                  onBack={() => setShowDiscoverPanel(false)}
+                  onAddMint={handleAddMint}
+                  onRefresh={() => runDiscoverBackgroundSync(true)}
+                  isSyncing={() => discoverStore.syncing}
+                  lastSyncedAt={
+                    auth.pubkey() ? (readSyncMeta(auth.pubkey()!)?.discoverMints ?? null) : null
+                  }
+                />
+              </Show>
+
+              <Show when={walletState() === 'loaded' && !mintPanel() && !showDiscoverPanel()}>
+                <div class="mt-4 space-y-4">
+                  <div>
+                    <p class="text-sm font-medium text-slate-700">{t('Mints')}</p>
+                    <ul class="mt-2 space-y-3">
+                      <For each={walletContent()?.mints ?? []}>
+                        {(mintUrl) => (
+                          <Mint
+                            mintUrl={mintUrl}
+                            balance={balanceForMint(mintUrl)}
+                            pendingCount={pendingCountForMint(mintUrl)}
+                            panel={null}
+                            onReceive={() => openReceive(mintUrl)}
+                            onSend={() => openSend(mintUrl)}
+                            onHistory={() => {
+                              setSelectedMintUrl(mintUrl);
+                              setMintPanel('history');
+                            }}
+                          />
+                        )}
+                      </For>
+                    </ul>
+                  </div>
+
+                  <Show when={showAddMint()}>
+                    <div class="flex gap-2">
+                      <input
+                        type="url"
+                        placeholder={t('Mint URL')}
+                        value={addMintUrl()}
+                        onInput={(e) => setAddMintUrl(e.currentTarget.value)}
+                        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddMint()}
+                        class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                      >
+                        {t('Add Mint')}
+                      </button>
+                    </div>
+                  </Show>
+                  <Show when={errorMessage()}>
+                    <p class="text-sm text-red-600">{errorMessage()}</p>
+                  </Show>
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddMint((v) => !v)}
+                      class="text-sm text-blue-600 hover:underline"
+                    >
+                      {showAddMint() ? t('Close') : `+ ${t('Add Mint')}`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openDiscoverPanel}
+                      class="text-sm text-blue-600 hover:underline"
+                    >
+                      {t('Discover mints')}
+                    </button>
+                  </div>
+                </div>
+              </Show>
+
+              <Show
+                when={
+                  walletState() === 'loaded' && mintPanel() !== null && selectedMintUrl() !== null
+                }
+                fallback={null}
+              >
+                <Mint
+                  mintUrl={selectedMintUrl()!}
+                  balance={balanceForMint(selectedMintUrl()!)}
+                  pendingCount={pendingCountForMint(selectedMintUrl()!)}
+                  panel={mintPanel()}
+                  onReceive={() => openReceive(selectedMintUrl()!)}
+                  onSend={() => openSend(selectedMintUrl()!)}
+                  onHistory={() => setMintPanel('history')}
+                  panelState={mintPanelState()}
+                />
+              </Show>
+            </Show>
+
+            <div class="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => props.onClose()}
+                class="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                {t('Close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Show>
+  );
+}

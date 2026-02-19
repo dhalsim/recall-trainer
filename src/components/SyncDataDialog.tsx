@@ -1,4 +1,4 @@
-import { Show, For } from 'solid-js';
+import { For, Show } from 'solid-js';
 
 import { useNostrAuth } from '../contexts/NostrAuthContext';
 import { t } from '../i18n';
@@ -13,6 +13,7 @@ import {
   pushSyncData,
 } from '../lib/nostr/nip78';
 import { DEFAULT_WRITE_RELAYS } from '../utils/nostr';
+import { formatRelativeTime } from '../utils/relativeTime';
 
 interface SyncDataDialogProps {
   open: boolean;
@@ -26,31 +27,6 @@ export function SyncDataDialog(props: SyncDataDialogProps) {
     const nip65 = getRelays(pubkey);
 
     return nip65?.writeRelays?.length ? nip65.writeRelays : DEFAULT_WRITE_RELAYS;
-  }
-
-  function formatRelativeTime(ts: number): string {
-    const now = Math.floor(Date.now() / 1000);
-    const diff = now - ts;
-
-    if (diff < 60) {
-      return t('Just now');
-    }
-
-    if (diff < 3600) {
-      const m = Math.floor(diff / 60);
-
-      return m === 1 ? t('1 minute ago') : t('{{count}} minutes ago', { count: m });
-    }
-
-    if (diff < 86400) {
-      const h = Math.floor(diff / 3600);
-
-      return h === 1 ? t('1 hour ago') : t('{{count}} hours ago', { count: h });
-    }
-
-    const d = Math.floor(diff / 86400);
-
-    return d === 1 ? t('1 day ago') : t('{{count}} days ago', { count: d });
   }
 
   return (

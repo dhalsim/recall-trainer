@@ -213,5 +213,16 @@
   "Enter a valid amount.": "Enter a valid amount.",
   "Publish token event": "Publish token event",
   "Failed to receive token.": "Failed to receive token.",
-  "Failed to send.": "Failed to send."
+  "Failed to send.": "Failed to send.",
+  "Discover mints": "Discover mints",
+  "Discovering…": "Discovering…",
+  "Syncing…": "Syncing…",
+  "No mints found.": "No mints found.",
+  "Add to wallet": "Add to wallet",
+  "Rating": "Rating",
+  "Reviews": "Reviews",
+  "Mint info": "Mint info",
+  "Network": "Network",
+  "No reviews yet.": "No reviews yet.",
+  "Details": "Details"
 }
