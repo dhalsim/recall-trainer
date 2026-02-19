@@ -1,10 +1,13 @@
-import { createSignal, For, Show } from 'solid-js';
+import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
 
+import { useNostrAuth } from '../../contexts/NostrAuthContext';
 import { t } from '../../i18n';
-import type { DiscoverStore } from '../../lib/cashu/discoverCache';
+import type { DiscoverMintData, DiscoverStore } from '../../lib/cashu/discoverCache';
+import type { WotMintScore } from '../../lib/wot/wotScore';
+import { computeWotMintScore, getWotDepths } from '../../lib/wot/wotScore';
 import { formatRelativeTime } from '../../utils/relativeTime';
 
-import { MintDetails } from './MintDetails';
+import { depthLabel, MintDetails } from './MintDetails';
 import { truncateUrl } from './utils';
 
 interface MintDiscoveryProps {
@@ -18,13 +21,95 @@ interface MintDiscoveryProps {
 }
 
 export function MintDiscovery(props: MintDiscoveryProps) {
+  const auth = useNostrAuth();
   const [selectedMintUrl, setSelectedMintUrl] = createSignal<string | null>(null);
+
+  const [depthsMap] = createResource(
+    () => {
+      const root = auth.pubkey();
+      const mints = props.store.mints;
+      const urls = Object.keys(mints);
+
+      if (!root || urls.length === 0) {
+        return undefined;
+      }
+
+      const allPubkeys = new Set<string>();
+
+      for (const url of urls) {
+        const m = mints[url];
+        allPubkeys.add(m.mintPubkey);
+
+        for (const r of m.reviews) {
+          allPubkeys.add(r.author);
+        }
+      }
+
+      return { root, pubkeys: [...allPubkeys] } as const;
+    },
+    async ({ root, pubkeys }) => getWotDepths([...pubkeys], root),
+  );
+
+  const wotScores = createMemo((): Map<string, WotMintScore> => {
+    const depths = depthsMap();
+    const result = new Map<string, WotMintScore>();
+
+    if (!depths) {
+      return result;
+    }
+
+    for (const [url, mint] of Object.entries(props.store.mints)) {
+      result.set(url, computeWotMintScore(mint.reviews, depths));
+    }
+
+    return result;
+  });
+
+  const sortedMintUrls = createMemo((): string[] => {
+    const urls = Object.keys(props.store.mints);
+    const scores = wotScores();
+    const mints = props.store.mints;
+
+    return urls.sort((a, b) => {
+      const sa = scores.get(a);
+      const sb = scores.get(b);
+      const hasWotA = sa != null && sa.score != null;
+      const hasWotB = sb != null && sb.score != null;
+
+      if (hasWotA && !hasWotB) {
+        return -1;
+      }
+
+      if (!hasWotA && hasWotB) {
+        return 1;
+      }
+
+      if (hasWotA && hasWotB) {
+        return sb!.score! - sa!.score!;
+      }
+
+      const ra = mints[a].avgRating ?? 0;
+      const rb = mints[b].avgRating ?? 0;
+
+      return rb - ra;
+    });
+  });
 
   const selectedMint = () => {
     const url = selectedMintUrl();
 
     return url ? (props.store.mints[url] ?? null) : null;
   };
+
+  function formatWotScore(mint: DiscoverMintData): string | null {
+    const s = wotScores().get(mint.url);
+
+    if (!s || s.score == null) {
+      return null;
+    }
+
+    return `${s.score.toFixed(1)} (${s.wotReviewCount}/${s.totalReviewCount})`;
+  }
 
   return (
     <div class="mt-4 space-y-4">
@@ -75,9 +160,11 @@ export function MintDiscovery(props: MintDiscoveryProps) {
         </Show>
         <Show when={!props.store.loading && !props.store.error}>
           <ul class="mt-2 space-y-3">
-            <For each={Object.keys(props.store.mints)}>
+            <For each={sortedMintUrls()}>
               {(url) => {
                 const mint = () => props.store.mints[url];
+                const mintDepth = () => depthsMap()?.get(mint().mintPubkey) ?? null;
+                const wotLabel = () => formatWotScore(mint());
 
                 return (
                   <li class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
@@ -93,16 +180,33 @@ export function MintDiscovery(props: MintDiscoveryProps) {
                         <span class="truncate font-mono text-xs text-slate-700" title={url}>
                           {mint().mintInfo?.name ?? truncateUrl(url, 36)}
                         </span>
+                        <Show when={mintDepth() !== null}>
+                          <span class="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                            {depthLabel(mintDepth()!)}
+                          </span>
+                        </Show>
                       </div>
                       <Show when={mint().network}>
                         <span class="shrink-0 text-xs text-slate-500">{mint().network}</span>
                       </Show>
                     </div>
                     <div class="mt-2 flex flex-wrap items-center gap-3">
-                      <span class="text-xs text-slate-600">
-                        {t('Rating')}:{' '}
-                        {mint().avgRating != null ? mint().avgRating!.toFixed(1) : '—'}
-                      </span>
+                      <Show
+                        when={wotLabel()}
+                        fallback={
+                          <span class="text-xs text-slate-600">
+                            {t('Rating')}:{' '}
+                            {mint().avgRating != null ? mint().avgRating!.toFixed(1) : '—'}
+                          </span>
+                        }
+                      >
+                        <span
+                          class="text-xs font-medium text-indigo-700"
+                          title={t('WoT score: weighted rating from trusted reviewers')}
+                        >
+                          {t('WoT score')}: {wotLabel()}
+                        </span>
+                      </Show>
                       <span class="text-xs text-slate-600">
                         {t('Reviews')}: {mint().reviewCount}
                       </span>

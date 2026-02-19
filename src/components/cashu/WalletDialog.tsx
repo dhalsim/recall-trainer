@@ -16,6 +16,12 @@ import {
   queryWallet,
   walletContentToArray,
 } from '../../lib/cashu/nip60';
+import {
+  clearWalletCache,
+  proofMapFromCache,
+  readWalletCache,
+  writeWalletCache,
+} from '../../lib/cashu/walletCache';
 import type { Nip65Relays } from '../../lib/nostr/nip65';
 import { getRelays } from '../../lib/nostr/nip65';
 import { readSyncMeta, writeSyncMeta } from '../../lib/syncMeta';
@@ -75,25 +81,10 @@ export function WalletDialog(props: WalletDialogProps) {
     error: null,
   });
 
-  const loadWallet = async (): Promise<void> => {
-    const pubkey = auth.pubkey();
+  const [syncing, setSyncing] = createSignal(false);
 
-    if (!pubkey) {
-      setWalletState('error');
-      setErrorMessage(t('Could not get public key.'));
-
-      return;
-    }
-
-    if (!auth.provider?.hasCapability('nip44')) {
-      setWalletState('error');
-      setErrorMessage(t('NIP-44 encryption is not supported by your current signer.'));
-
-      return;
-    }
-
-    setWalletState('loading');
-    setErrorMessage(null);
+  const syncWalletFromRelays = async (pubkey: string): Promise<void> => {
+    setSyncing(true);
 
     const readRelays = getReadRelays(pubkey);
 
@@ -104,6 +95,7 @@ export function WalletDialog(props: WalletDialogProps) {
         setWalletState('no-wallet');
         setWalletContent(null);
         setProofsByMint(new Map());
+        clearWalletCache(pubkey);
 
         return;
       }
@@ -126,11 +118,53 @@ export function WalletDialog(props: WalletDialogProps) {
 
       setProofsByMint(byMint);
       setWalletState('loaded');
+      writeWalletCache(pubkey, content, byMint);
+      writeSyncMeta(pubkey, 'wallet', Math.floor(Date.now() / 1000));
     } catch (err) {
-      console.error('[CashuWallet] Load failed:', err);
-      setWalletState('error');
-      setErrorMessage(t('Failed to load wallet.'));
+      console.error('[CashuWallet] Background sync failed:', err);
+
+      if (walletState() !== 'loaded') {
+        setWalletState('error');
+        setErrorMessage(t('Failed to load wallet.'));
+      }
+    } finally {
+      setSyncing(false);
     }
+  };
+
+  const loadWallet = async (): Promise<void> => {
+    const pubkey = auth.pubkey();
+
+    if (!pubkey) {
+      setWalletState('error');
+      setErrorMessage(t('Could not get public key.'));
+
+      return;
+    }
+
+    if (!auth.provider?.hasCapability('nip44')) {
+      setWalletState('error');
+      setErrorMessage(t('NIP-44 encryption is not supported by your current signer.'));
+
+      return;
+    }
+
+    setErrorMessage(null);
+
+    const cached = readWalletCache(pubkey);
+
+    if (cached && cached.walletContent.privkey) {
+      setWalletContent(cached.walletContent);
+      setProofsByMint(proofMapFromCache(cached));
+      setWalletState('loaded');
+
+      void syncWalletFromRelays(pubkey);
+
+      return;
+    }
+
+    setWalletState('loading');
+    await syncWalletFromRelays(pubkey);
   };
 
   createEffect(() => {
@@ -183,6 +217,7 @@ export function WalletDialog(props: WalletDialogProps) {
       setWalletState('loaded');
       setShowCreateForm(false);
       setCreateMintUrls(['']);
+      writeWalletCache(pubkey, content, new Map());
     } catch (err) {
       console.error('[CashuWallet] Create failed:', err);
       setErrorMessage(t('Failed to create wallet.'));
@@ -215,9 +250,13 @@ export function WalletDialog(props: WalletDialogProps) {
     setShowDiscoverPanel(false);
     setErrorMessage(null);
 
-    void (async () => {
-      const pk = auth.pubkey();
+    const pk = auth.pubkey();
 
+    if (pk) {
+      writeWalletCache(pk, updated, proofsByMint());
+    }
+
+    void (async () => {
       if (!pk) {
         return;
       }
@@ -389,6 +428,14 @@ export function WalletDialog(props: WalletDialogProps) {
       });
 
       await publishTokenEvent(mintUrl, merged);
+
+      const wc = walletContent();
+      const pk = auth.pubkey();
+
+      if (wc && pk) {
+        writeWalletCache(pk, wc, proofsByMint());
+      }
+
       closeMintPanel();
     } catch (err) {
       console.error('[CashuWallet] Receive failed:', err);
@@ -449,6 +496,13 @@ export function WalletDialog(props: WalletDialogProps) {
       });
 
       await publishTokenEvent(mintUrl, keep);
+
+      const wc = walletContent();
+      const pk = auth.pubkey();
+
+      if (wc && pk) {
+        writeWalletCache(pk, wc, proofsByMint());
+      }
     } catch (err) {
       console.error('[CashuWallet] Send failed:', err);
       setErrorMessage(err instanceof Error ? err.message : t('Failed to send.'));
@@ -502,9 +556,14 @@ export function WalletDialog(props: WalletDialogProps) {
           onClick={(e) => e.stopPropagation()}
         >
           <div class="flex-shrink-0 border-b border-slate-100 px-6 py-4">
-            <h2 id="cashu-wallet-title" class="text-lg font-semibold text-slate-900">
-              {t('Wallet')}
-            </h2>
+            <div class="flex items-center gap-2">
+              <h2 id="cashu-wallet-title" class="text-lg font-semibold text-slate-900">
+                {t('Wallet')}
+              </h2>
+              <Show when={syncing()}>
+                <span class="text-xs text-slate-400">{t('Syncing...')}</span>
+              </Show>
+            </div>
           </div>
           <div class="min-h-0 flex-1 overflow-y-auto p-6">
             <Show when={!auth.isLoggedIn()}>

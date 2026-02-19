@@ -178,6 +178,7 @@
   "Sync Data": "データ同期",
   "Wallet": "ウォレット",
   "Loading wallets...": "ウォレットを読み込み中...",
+  "Syncing...": "同期中...",
   "No wallets found for this account.": "このアカウントにウォレットはありません。",
   "Create a new wallet and transfer funds to it.": "新しいウォレットを作成し、資金を送金してください。",
   "Create Wallet": "ウォレットを作成",
@@ -224,5 +225,18 @@
   "Mint info": "ミント情報",
   "Network": "ネットワーク",
   "No reviews yet.": "レビューはまだありません。",
-  "Details": "詳細"
+  "Details": "詳細",
+  "Web of Trust": "信頼の輪",
+  "Crawling…": "取得中…",
+  "Depth": "深さ",
+  "contacts": "コンタクト",
+  "Web of Trust data is not fetched to check reviewers and mint pubkeys trust score.": "レビュアーとミントの信頼スコアを確認するため、Web of Trustデータが取得されていません。",
+  "Click here to fetch": "取得するにはここをクリック",
+  "Direct follow": "直接フォロー",
+  "1 hop": "1ホップ",
+  "2 hops": "2ホップ",
+  "You": "あなた",
+  "Mint pubkey": "ミント pubkey",
+  "WoT score": "WoT スコア",
+  "WoT score: weighted rating from trusted reviewers": "WoT スコア：信頼するレビュアーの加重評価"
 }

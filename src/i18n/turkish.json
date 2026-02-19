@@ -178,6 +178,7 @@
   "Sync Data": "Veriyi Eşitle",
   "Wallet": "Cüzdan",
   "Loading wallets...": "Cüzdanlar yükleniyor...",
+  "Syncing...": "Eşitleniyor...",
   "No wallets found for this account.": "Bu hesap için cüzdan bulunamadı.",
   "Create a new wallet and transfer funds to it.": "Yeni bir cüzdan oluşturup fon aktarın.",
   "Create Wallet": "Cüzdan Oluştur",
@@ -224,5 +225,18 @@
   "Mint info": "Darphane bilgisi",
   "Network": "Ağ",
   "No reviews yet.": "Henüz inceleme yok.",
-  "Details": "Detaylar"
+  "Details": "Detaylar",
+  "Web of Trust": "Güven Ağı",
+  "Crawling…": "Taranıyor…",
+  "Depth": "Derinlik",
+  "contacts": "kişi",
+  "Web of Trust data is not fetched to check reviewers and mint pubkeys trust score.": "İnceleyenler ve darphane pubkey güven puanı için Web of Trust verisi alınmadı.",
+  "Click here to fetch": "Almak için buraya tıklayın",
+  "Direct follow": "Doğrudan takip",
+  "1 hop": "1 atlama",
+  "2 hops": "2 atlama",
+  "You": "Siz",
+  "Mint pubkey": "Darphane pubkey",
+  "WoT score": "WoT puanı",
+  "WoT score: weighted rating from trusted reviewers": "WoT puanı: güvenilen inceleyicilerin ağırlıklı değerlendirmesi"
 }

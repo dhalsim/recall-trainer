@@ -178,6 +178,7 @@
   "Sync Data": "Sync Data",
   "Wallet": "Wallet",
   "Loading wallets...": "Loading wallets...",
+  "Syncing...": "Syncing...",
   "No wallets found for this account.": "No wallets found for this account.",
   "Create a new wallet and transfer funds to it.": "Create a new wallet and transfer funds to it.",
   "Create Wallet": "Create Wallet",
@@ -224,5 +225,18 @@
   "Mint info": "Mint info",
   "Network": "Network",
   "No reviews yet.": "No reviews yet.",
-  "Details": "Details"
+  "Details": "Details",
+  "Web of Trust": "Web of Trust",
+  "Crawling…": "Crawling…",
+  "Depth": "Depth",
+  "contacts": "contacts",
+  "Web of Trust data is not fetched to check reviewers and mint pubkeys trust score.": "Web of Trust data is not fetched to check reviewers and mint pubkeys trust score.",
+  "Click here to fetch": "Click here to fetch",
+  "Direct follow": "Direct follow",
+  "1 hop": "1 hop",
+  "2 hops": "2 hops",
+  "You": "You",
+  "Mint pubkey": "Mint pubkey",
+  "WoT score": "WoT score",
+  "WoT score: weighted rating from trusted reviewers": "WoT score: weighted rating from trusted reviewers"
 }

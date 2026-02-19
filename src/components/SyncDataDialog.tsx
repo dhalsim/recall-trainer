@@ -15,6 +15,8 @@ import {
 import { DEFAULT_WRITE_RELAYS } from '../utils/nostr';
 import { formatRelativeTime } from '../utils/relativeTime';
 
+import { WotSyncSection } from './WotSyncSection';
+
 interface SyncDataDialogProps {
   open: boolean;
   onClose: () => void;
@@ -190,6 +192,7 @@ export function SyncDataDialog(props: SyncDataDialogProps) {
                           </div>
                         );
                       })()}
+                    {pk ? <WotSyncSection rootPubkey={pk} /> : null}
                   </>
                 );
               })()}

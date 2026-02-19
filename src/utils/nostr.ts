@@ -58,3 +58,44 @@ export const PROFILE_RELAYS = [
   'wss://user.kindpag.es',
   'wss://relay.nostr.band',
 ];
+
+/**
+ * Run a query function over items in chunks, with up to `concurrency` chunks in flight.
+ * Returns flattened results in chunk order.
+ */
+export async function queryChunkedParallel<T>(
+  items: string[],
+  chunkSize: number,
+  concurrency: number,
+  queryFn: (chunk: string[]) => Promise<T[]>,
+): Promise<T[]> {
+  const chunks: string[][] = [];
+
+  for (let i = 0; i < items.length; i += chunkSize) {
+    chunks.push(items.slice(i, i + chunkSize));
+  }
+
+  if (chunks.length === 0) {
+    return [];
+  }
+
+  const results: T[][] = new Array(chunks.length);
+  let nextIndex = 0;
+
+  async function runNext(): Promise<void> {
+    const index = nextIndex++;
+
+    if (index >= chunks.length) {
+      return;
+    }
+
+    results[index] = await queryFn(chunks[index]);
+    await runNext();
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, chunks.length) }, () => runNext());
+
+  await Promise.all(workers);
+
+  return results.flat();
+}

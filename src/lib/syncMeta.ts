@@ -3,7 +3,7 @@
  * Single localStorage key per pubkey; value is an object with typed sync ids and timestamps (seconds).
  */
 
-export type SyncMetaId = 'nip78' | 'discoverMints';
+export type SyncMetaId = 'nip78' | 'discoverMints' | 'wot' | 'wallet';
 
 export type SyncMeta = Partial<Record<SyncMetaId, number>>;
 

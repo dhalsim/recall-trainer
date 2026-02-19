@@ -1,7 +1,11 @@
-import { For, Show } from 'solid-js';
+import { createMemo, createResource, For, Show } from 'solid-js';
 
+import { useNostrAuth } from '../../contexts/NostrAuthContext';
+import { useSyncDialog } from '../../contexts/SyncDialogContext';
 import { t } from '../../i18n';
 import type { DiscoverMintData } from '../../lib/cashu/discoverCache';
+import { readSyncMeta } from '../../lib/syncMeta';
+import { getWotDepths } from '../../lib/wot/wotScore';
 
 import { truncateUrl } from './utils';
 
@@ -31,10 +35,69 @@ function truncatePubkey(pubkey: string, len = 12): string {
   return pubkey.slice(0, 6) + '…' + pubkey.slice(-4);
 }
 
+export function depthLabel(depth: number): string {
+  if (depth === 0) {
+    return t('You');
+  }
+
+  if (depth === 1) {
+    return t('Direct follow');
+  }
+
+  return t('2 hops');
+}
+
 export function MintDetails(props: MintDetailsProps) {
+  const auth = useNostrAuth();
+  const { openSyncDialog } = useSyncDialog();
   const mint = () => props.mint;
   const info = () => mint().mintInfo;
   const reviews = () => mint().reviews;
+  const rootPubkey = () => auth.pubkey() ?? null;
+
+  const [depthsMap] = createResource(
+    () => {
+      const root = rootPubkey();
+
+      if (!root) {
+        return undefined;
+      }
+
+      const revs = reviews();
+      const authors = [...new Set([mint().mintPubkey, ...revs.map((r) => r.author)])];
+
+      return { root, authors } as const;
+    },
+    async ({ root, authors }) => getWotDepths(authors, root),
+  );
+
+  const hasWotData = () => {
+    const root = rootPubkey();
+
+    return root != null && readSyncMeta(root)?.wot != null;
+  };
+
+  const sortedReviews = createMemo(() => {
+    const depths = depthsMap();
+    const revs = reviews();
+
+    if (!depths) {
+      return revs;
+    }
+
+    const MAX_DEPTH = 999;
+
+    return [...revs].sort((a, b) => {
+      const da = depths.get(a.author) ?? MAX_DEPTH;
+      const db = depths.get(b.author) ?? MAX_DEPTH;
+
+      if (da !== db) {
+        return da - db;
+      }
+
+      return (b.rating ?? 0) - (a.rating ?? 0);
+    });
+  });
 
   return (
     <div class="mt-4 space-y-4">
@@ -58,9 +121,21 @@ export function MintDetails(props: MintDetailsProps) {
             />
           </Show>
           <div class="min-w-0 flex-1">
-            <p class="font-medium text-slate-900">{info()?.name ?? truncateUrl(mint().url, 48)}</p>
+            <div class="flex flex-wrap items-center gap-2">
+              <p class="font-medium text-slate-900">
+                {info()?.name ?? truncateUrl(mint().url, 48)}
+              </p>
+              <Show when={depthsMap()?.get(mint().mintPubkey) != null}>
+                <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                  {depthLabel(depthsMap()!.get(mint().mintPubkey)!)}
+                </span>
+              </Show>
+            </div>
             <p class="mt-1 font-mono text-xs text-slate-500" title={mint().url}>
               {truncateUrl(mint().url, 56)}
+            </p>
+            <p class="mt-1 font-mono text-xs text-slate-500" title={mint().mintPubkey}>
+              {t('Mint pubkey')}: {truncatePubkey(mint().mintPubkey, 20)}
             </p>
             <Show when={mint().network}>
               <p class="mt-1 text-xs text-slate-600">
@@ -101,28 +176,51 @@ export function MintDetails(props: MintDetailsProps) {
       {/* Reviews list */}
       <section class="rounded-lg border border-slate-200 bg-white p-4">
         <h3 class="text-sm font-semibold text-slate-800">{t('Reviews')}</h3>
+        <Show when={rootPubkey() && !hasWotData()}>
+          <p class="mt-2 text-xs text-amber-700">
+            {t('Web of Trust data is not fetched to check reviewers and mint pubkeys trust score.')}{' '}
+            <button
+              type="button"
+              onClick={() => openSyncDialog()}
+              class="inline underline hover:no-underline focus:outline-none focus:ring-2 focus:ring-amber-500"
+            >
+              {t('Click here to fetch')}
+            </button>
+          </p>
+        </Show>
         <Show
           when={reviews().length > 0}
           fallback={<p class="mt-2 text-sm text-slate-500">{t('No reviews yet.')}</p>}
         >
           <ul class="mt-3 space-y-3">
-            <For each={reviews()}>
-              {(review) => (
-                <li class="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                  <div class="flex flex-wrap items-center justify-between gap-2">
-                    <span class="font-mono text-xs text-slate-500" title={review.author}>
-                      {truncatePubkey(review.author)}
-                    </span>
-                    <Show when={review.rating != null}>
-                      <span class="text-xs font-medium text-amber-600">{review.rating}/5</span>
+            <For each={sortedReviews()}>
+              {(review) => {
+                const depth = () => depthsMap()?.get(review.author) ?? null;
+
+                return (
+                  <li class="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <span class="font-mono text-xs text-slate-500" title={review.author}>
+                        {truncatePubkey(review.author)}
+                      </span>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <Show when={depth() !== null}>
+                          <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                            {depthLabel(depth()!)}
+                          </span>
+                        </Show>
+                        <Show when={review.rating != null}>
+                          <span class="text-xs font-medium text-amber-600">{review.rating}/5</span>
+                        </Show>
+                      </div>
+                    </div>
+                    <Show when={review.content}>
+                      <p class="mt-1 text-sm text-slate-700">{review.content}</p>
                     </Show>
-                  </div>
-                  <Show when={review.content}>
-                    <p class="mt-1 text-sm text-slate-700">{review.content}</p>
-                  </Show>
-                  <p class="mt-1 text-xs text-slate-400">{formatReviewDate(review.created_at)}</p>
-                </li>
-              )}
+                    <p class="mt-1 text-xs text-slate-400">{formatReviewDate(review.created_at)}</p>
+                  </li>
+                );
+              }}
             </For>
           </ul>
         </Show>
