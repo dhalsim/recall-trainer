@@ -237,6 +237,14 @@
   "2 hops": "2 atlama",
   "You": "Siz",
   "Mint pubkey": "Darphane pubkey",
+  "View profile": "Profili görüntüle",
+  "Verifying NIP-05…": "NIP-05 doğrulanıyor…",
+  "NIP-05 verified": "NIP-05 doğrulandı",
+  "NIP-05 not verified": "NIP-05 doğrulanmadı",
+  "Could not verify NIP-05": "NIP-05 doğrulanamadı",
   "WoT score": "WoT puanı",
-  "WoT score: weighted rating from trusted reviewers": "WoT puanı: güvenilen inceleyicilerin ağırlıklı değerlendirmesi"
+  "WoT score: weighted rating from trusted reviewers": "WoT puanı: güvenilen inceleyicilerin ağırlıklı değerlendirmesi",
+  "Mint info API could not be reached ({{code}}). The mint may be inactive.": "Darphane bilgi API'sine ulaşılamadı ({{code}}). Darphane artık aktif olmayabilir.",
+  "Mint info API could not be reached. Mint may be inactive.": "Darphane bilgi API'sine ulaşılamadı. Darphane artık aktif olmayabilir.",
+  "Mint unreachable": "Darphane ulaşılamıyor"
 }

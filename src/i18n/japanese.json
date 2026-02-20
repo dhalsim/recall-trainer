@@ -237,6 +237,14 @@
   "2 hops": "2ホップ",
   "You": "あなた",
   "Mint pubkey": "ミント pubkey",
+  "View profile": "プロフィールを見る",
+  "Verifying NIP-05…": "NIP-05 を確認中…",
+  "NIP-05 verified": "NIP-05 確認済み",
+  "NIP-05 not verified": "NIP-05 未確認",
+  "Could not verify NIP-05": "NIP-05 を確認できませんでした",
   "WoT score": "WoT スコア",
-  "WoT score: weighted rating from trusted reviewers": "WoT スコア：信頼するレビュアーの加重評価"
+  "WoT score: weighted rating from trusted reviewers": "WoT スコア：信頼するレビュアーの加重評価",
+  "Mint info API could not be reached ({{code}}). The mint may be inactive.": "ミント情報APIに接続できませんでした（{{code}}）。ミントが非稼働の可能性があります。",
+  "Mint info API could not be reached. Mint may be inactive.": "ミント情報APIに接続できませんでした。ミントが非稼働の可能性があります。",
+  "Mint unreachable": "ミントに接続不可"
 }

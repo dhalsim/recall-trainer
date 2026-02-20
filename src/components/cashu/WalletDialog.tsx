@@ -359,9 +359,16 @@ export function WalletDialog(props: WalletDialogProps) {
     setDiscoverStore('syncing', true);
     const relays = getReadRelays(pubkey);
 
-    return backgroundSync(relays, (url, info) => {
-      setDiscoverStore('mints', url, 'mintInfo', info);
-    })
+    return backgroundSync(
+      relays,
+      (url, info) => {
+        setDiscoverStore('mints', url, 'mintInfo', info);
+        setDiscoverStore('mints', url, 'mintInfoError', undefined);
+      },
+      (url, error) => {
+        setDiscoverStore('mints', url, 'mintInfoError', error);
+      },
+    )
       .then((result) => {
         setDiscoverStore('mints', reconcile(result.mints));
         writeSyncMeta(pubkey, 'discoverMints', Math.floor(Date.now() / 1000));

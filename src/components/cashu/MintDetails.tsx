@@ -1,11 +1,14 @@
-import { createMemo, createResource, For, Show } from 'solid-js';
+import { createMemo, createResource, For, onMount, Show } from 'solid-js';
 
 import { useNostrAuth } from '../../contexts/NostrAuthContext';
 import { useSyncDialog } from '../../contexts/SyncDialogContext';
 import { t } from '../../i18n';
 import type { DiscoverMintData } from '../../lib/cashu/discoverCache';
+import { getProfile, prefetchProfiles } from '../../lib/profile/profileCache';
+import { getDisplayName } from '../../lib/profile/profileParse';
 import { readSyncMeta } from '../../lib/syncMeta';
 import { getWotDepths } from '../../lib/wot/wotScore';
+import { ProfileAvatar } from '../profile/ProfileAvatar';
 
 import { truncateUrl } from './utils';
 
@@ -99,6 +102,12 @@ export function MintDetails(props: MintDetailsProps) {
     });
   });
 
+  onMount(() => {
+    const authors = [mint().mintPubkey, ...reviews().map((r) => r.author)];
+
+    prefetchProfiles([...new Set(authors)]);
+  });
+
   return (
     <div class="mt-4 space-y-4">
       <button
@@ -112,6 +121,15 @@ export function MintDetails(props: MintDetailsProps) {
       {/* Mint info (NUT-06) */}
       <section class="rounded-lg border border-slate-200 bg-slate-50 p-4">
         <h3 class="text-sm font-semibold text-slate-800">{t('Mint info')}</h3>
+        <Show when={mint().mintInfoError}>
+          {(err) => (
+            <p class="mt-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {t('Mint info API could not be reached ({{code}}). The mint may be inactive.', {
+                code: err(),
+              })}
+            </p>
+          )}
+        </Show>
         <div class="mt-3 flex flex-wrap items-start gap-3">
           <Show when={info()?.icon_url}>
             <img
@@ -134,9 +152,12 @@ export function MintDetails(props: MintDetailsProps) {
             <p class="mt-1 font-mono text-xs text-slate-500" title={mint().url}>
               {truncateUrl(mint().url, 56)}
             </p>
-            <p class="mt-1 font-mono text-xs text-slate-500" title={mint().mintPubkey}>
-              {t('Mint pubkey')}: {truncatePubkey(mint().mintPubkey, 20)}
-            </p>
+            <div class="mt-1 flex items-center gap-2">
+              <p class="font-mono text-xs text-slate-500" title={mint().mintPubkey}>
+                {t('Mint pubkey')}: {truncatePubkey(mint().mintPubkey, 20)}
+              </p>
+              <ProfileAvatar pubkey={mint().mintPubkey} size="xs" disablePopup />
+            </div>
             <Show when={mint().network}>
               <p class="mt-1 text-xs text-slate-600">
                 {t('Network')}: {mint().network}
@@ -196,13 +217,21 @@ export function MintDetails(props: MintDetailsProps) {
             <For each={sortedReviews()}>
               {(review) => {
                 const depth = () => depthsMap()?.get(review.author) ?? null;
+                const profile = () => getProfile(review.author);
+                const displayName = () => getDisplayName(profile(), review.author);
 
                 return (
                   <li class="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
                     <div class="flex flex-wrap items-center justify-between gap-2">
-                      <span class="font-mono text-xs text-slate-500" title={review.author}>
-                        {truncatePubkey(review.author)}
-                      </span>
+                      <div class="flex min-w-0 flex-1 items-center gap-2">
+                        <ProfileAvatar pubkey={review.author} size="lg" />
+                        <span
+                          class="truncate font-mono text-xs text-slate-500"
+                          title={review.author}
+                        >
+                          {displayName()}
+                        </span>
+                      </div>
                       <div class="flex flex-wrap items-center gap-2">
                         <Show when={depth() !== null}>
                           <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">

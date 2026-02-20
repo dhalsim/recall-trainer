@@ -31,6 +31,8 @@ export type DiscoverMintData = {
   reviewCount: number;
   avgRating: number | null;
   mintInfo: GetInfoResponse | null;
+  /** Set when NUT-06 /v1/info fetch failed (e.g. "404", "502", "timeout", "unreachable"). */
+  mintInfoError?: string;
 };
 
 export type DiscoverStore = {
@@ -236,10 +238,12 @@ export type BackgroundSyncResult = {
 /**
  * Sync mints and reviews from Nostr into IDB, then refresh NUT-06 per URL.
  * Returns mints immediately (from IDB after Nostr write). NUT-06 results stream via onMintInfo.
+ * On fetch failure, onMintInfoError is called with the error code.
  */
 export async function backgroundSync(
   relays: string[],
   onMintInfo?: (url: string, info: GetInfoResponse) => void,
+  onMintInfoError?: (url: string, error: string) => void,
 ): Promise<BackgroundSyncResult> {
   const db = await openDB();
 
@@ -256,13 +260,15 @@ export async function backgroundSync(
     const urls = Object.keys(mints);
 
     for (const url of urls) {
-      getMintInfo(url).then((info) => {
-        if (info) {
+      getMintInfo(url).then((result) => {
+        if (result.ok) {
           openDB()
-            .then((d) => setMintInfo(d, url, info).finally(() => d.close()))
+            .then((d) => setMintInfo(d, url, result.info).finally(() => d.close()))
             .catch((e) => console.error('discoverCache setMintInfo', url, e));
 
-          onMintInfo?.(url, info);
+          onMintInfo?.(url, result.info);
+        } else {
+          onMintInfoError?.(url, result.error);
         }
       });
     }

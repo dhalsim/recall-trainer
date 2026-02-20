@@ -189,6 +189,14 @@ export function MintDiscovery(props: MintDiscoveryProps) {
                       <Show when={mint().network}>
                         <span class="shrink-0 text-xs text-slate-500">{mint().network}</span>
                       </Show>
+                      <Show when={mint().mintInfoError}>
+                        <span
+                          class="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                          title={t('Mint info API could not be reached. Mint may be inactive.')}
+                        >
+                          {t('Mint unreachable')}
+                        </span>
+                      </Show>
                     </div>
                     <div class="mt-2 flex flex-wrap items-center gap-3">
                       <Show

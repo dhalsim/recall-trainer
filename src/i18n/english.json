@@ -237,6 +237,14 @@
   "2 hops": "2 hops",
   "You": "You",
   "Mint pubkey": "Mint pubkey",
+  "View profile": "View profile",
+  "Verifying NIP-05…": "Verifying NIP-05…",
+  "NIP-05 verified": "NIP-05 verified",
+  "NIP-05 not verified": "NIP-05 not verified",
+  "Could not verify NIP-05": "Could not verify NIP-05",
   "WoT score": "WoT score",
-  "WoT score: weighted rating from trusted reviewers": "WoT score: weighted rating from trusted reviewers"
+  "WoT score: weighted rating from trusted reviewers": "WoT score: weighted rating from trusted reviewers",
+  "Mint info API could not be reached ({{code}}). The mint may be inactive.": "Mint info API could not be reached ({{code}}). The mint may be inactive.",
+  "Mint info API could not be reached. Mint may be inactive.": "Mint info API could not be reached. Mint may be inactive.",
+  "Mint unreachable": "Mint unreachable"
 }
