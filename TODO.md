@@ -1,6 +1,6 @@
 # TODO — Recall Trainer
 
-Check AGENTS.md for the requirements.
+See .cursor/rules/agents.mdc (and project.mdc) for requirements.
 
 ## Phase 1 — Core Application
 

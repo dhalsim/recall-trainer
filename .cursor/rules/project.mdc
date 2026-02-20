@@ -1,9 +1,10 @@
 ---
-description: Project context — check AGENTS.md for requirements, TODO.md for tasks
+description: "ask|plan|agent — Project context. See agents.mdc for requirements, TODO.md for tasks"
 alwaysApply: true
 ---
 
 # Project context
 
-* Check **AGENTS.md** for the requirements.
+* See **.cursor/rules/agents.mdc** for agent requirements (workspace, dm-bot, commands).
+* When editing **dm-bot**, see **dm-bot/.cursor/rules/dm-bot-context.mdc** for codebase layout and extension points.
 * Check **TODO.md** for the tasks and progress.

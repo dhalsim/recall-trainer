@@ -11,11 +11,13 @@ const solidRecommendedRules =
   solid.configs?.['recommended']?.rules ??
   {};
 
+const tsconfigRootDir = import.meta.dirname;
+
 export default [
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ['dist/**', 'public/**', 'deps/**', 'node_modules/**'],
+    ignores: ['dist/**', 'public/**', 'deps/**', 'node_modules/**', 'dm-bot/**'],
   },
   {
     files: ['src/**/*.{ts,tsx}'],
@@ -26,6 +28,7 @@ export default [
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
+        tsconfigRootDir,
       },
     },
     plugins: {

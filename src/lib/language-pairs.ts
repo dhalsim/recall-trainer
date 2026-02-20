@@ -8,7 +8,7 @@ export const LANGUAGE_LABELS: Record<AppLanguage, string> = {
 };
 
 /**
- * Supported language pairs per AGENTS.md: English ↔ Japanese, Turkish ↔ Japanese
+ * Supported language pairs per project spec: English ↔ Japanese, Turkish ↔ Japanese
  */
 export const VALID_TARGETS: Record<AppLanguage, AppLanguage[]> = {
   en: ['ja'],
