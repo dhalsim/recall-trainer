@@ -10,6 +10,7 @@ import {
   QUESTIONS_PER_SESSION_MIN,
   store,
 } from '../store';
+import { assertUnreachable } from '../utils/nostr';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -30,6 +31,8 @@ function getProviderLabel(method: NostrProviderMethod): string {
       return 'Passkey signer';
     case 'password_signer':
       return 'Password signer';
+    default:
+      assertUnreachable(method);
   }
 }
 
