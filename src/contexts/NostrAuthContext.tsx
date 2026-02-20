@@ -8,6 +8,7 @@ import {
   clearNip55Result,
   createNip55Provider,
   getNip55Result,
+  parseNip55Nip44Result,
   parseNip55SignEventResult,
 } from '../lib/nostr/Nip55Provider';
 import { clearRelays, getRelays, subscribeRelays } from '../lib/nostr/nip65';
@@ -56,6 +57,12 @@ interface NostrAuthContextValue {
 
 const NostrAuthContext = createContext<NostrAuthContextValue | null>(null);
 
+type PendingNip55ResultState = {
+  signEvent: SignEventResult | null;
+  nip44Encrypt: string | null;
+  nip44Decrypt: string | null;
+};
+
 export function useNostrAuth(): NostrAuthContextValue {
   const ctx = useContext(NostrAuthContext);
 
@@ -71,9 +78,11 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
   const [pubkey, setPubkey] = createSignal<string | null>(null);
   const [isInitialized, setIsInitialized] = createSignal(false);
 
-  const [pendingNip55SignResult, setPendingNip55SignResult] = createSignal<SignEventResult | null>(
-    null,
-  );
+  const [pendingNip55Result, setPendingNip55Result] = createSignal<PendingNip55ResultState>({
+    signEvent: null,
+    nip44Encrypt: null,
+    nip44Decrypt: null,
+  });
 
   // Resolve pubkey when provider changes
   createEffect(() => {
@@ -149,7 +158,15 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
         const p = nip55Data ? createNip55Provider(nip55Data) : createNip55Provider({ pubkey: '' });
         const signedEvent = parseNip55SignEventResult(nip55Result.result);
-        setPendingNip55SignResult({ signedEvent, provider: p });
+        setPendingNip55Result((prev) => ({ ...prev, signEvent: { signedEvent, provider: p } }));
+        clearNip55Result();
+      } else if (nip55Result.type === 'nip44_encrypt') {
+        const encrypted = parseNip55Nip44Result(nip55Result.result);
+        setPendingNip55Result((prev) => ({ ...prev, nip44Encrypt: encrypted }));
+        clearNip55Result();
+      } else if (nip55Result.type === 'nip44_decrypt') {
+        const decrypted = parseNip55Nip44Result(nip55Result.result);
+        setPendingNip55Result((prev) => ({ ...prev, nip44Decrypt: decrypted }));
         clearNip55Result();
       }
     }
@@ -373,10 +390,10 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
   };
 
   const getPendingNip55SignResult = (): SignEventResult | null => {
-    const result = pendingNip55SignResult();
+    const result = pendingNip55Result().signEvent;
 
     if (result) {
-      setPendingNip55SignResult(null);
+      setPendingNip55Result((prev) => ({ ...prev, signEvent: null }));
 
       return result;
     }
@@ -387,6 +404,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
   const logout = (): void => {
     store.clearAuthLoginState();
     setProvider(null);
+    setPendingNip55Result({ signEvent: null, nip44Encrypt: null, nip44Decrypt: null });
   };
 
   const getPublicKey = async (params: GetPublicKeyParams): Promise<string | null> => {
@@ -412,6 +430,16 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
       throw new Error('Provider not ready');
     }
 
+    if (p.method === 'nip55') {
+      const pending = pendingNip55Result().signEvent;
+
+      if (pending) {
+        setPendingNip55Result((prev) => ({ ...prev, signEvent: null }));
+
+        return pending;
+      }
+    }
+
     return p.signEvent(params);
   };
 
@@ -426,6 +454,16 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
       throw new Error('NIP-44 encryption is not supported by your current signer.');
     }
 
+    if (p.method === 'nip55') {
+      const pending = pendingNip55Result().nip44Encrypt;
+
+      if (pending !== null) {
+        setPendingNip55Result((prev) => ({ ...prev, nip44Encrypt: null }));
+
+        return pending;
+      }
+    }
+
     return p.nip44Encrypt(pubkey, plaintext);
   };
 
@@ -438,6 +476,16 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
     if (!p.hasCapability('nip44') || !p.nip44Decrypt) {
       throw new Error('NIP-44 encryption is not supported by your current signer.');
+    }
+
+    if (p.method === 'nip55') {
+      const pending = pendingNip55Result().nip44Decrypt;
+
+      if (pending !== null) {
+        setPendingNip55Result((prev) => ({ ...prev, nip44Decrypt: null }));
+
+        return pending;
+      }
     }
 
     return p.nip44Decrypt(pubkey, ciphertext);

@@ -41,6 +41,26 @@ export interface WalletDialogProps {
 }
 
 type WalletState = 'loading' | 'no-wallet' | 'loaded' | 'error';
+type PendingWalletAction =
+  | {
+      type: 'create_wallet';
+      pubkey: string;
+      content: Nip60WalletContent;
+    }
+  | {
+      type: 'add_mint';
+      pubkey: string;
+      content: Nip60WalletContent;
+    }
+  | {
+      type: 'publish_token';
+      pubkey: string;
+      mintUrl: string;
+      proofs: Proof[];
+    };
+
+const PENDING_WALLET_ACTION_KEY = 'cashu_wallet_pending_action';
+const NIP55_NAVIGATION_CODE = 'NIP55_NAVIGATION';
 
 function getReadRelays(pubkey: string): string[] {
   const nip65 = getRelays(pubkey) as Nip65Relays | undefined;
@@ -52,6 +72,45 @@ function getWriteRelays(pubkey: string): string[] {
   const nip65 = getRelays(pubkey) as Nip65Relays | undefined;
 
   return nip65?.writeRelays?.length ? nip65.writeRelays : DEFAULT_WRITE_RELAYS;
+}
+
+function isNip55NavigationError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === NIP55_NAVIGATION_CODE
+  );
+}
+
+function readPendingWalletAction(): PendingWalletAction | null {
+  try {
+    const raw = localStorage.getItem(PENDING_WALLET_ACTION_KEY);
+
+    if (!raw) {
+      return null;
+    }
+
+    return JSON.parse(raw) as PendingWalletAction;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingWalletAction(action: PendingWalletAction): void {
+  try {
+    localStorage.setItem(PENDING_WALLET_ACTION_KEY, JSON.stringify(action));
+  } catch (err) {
+    console.error('[CashuWallet] Failed to persist pending action:', err);
+  }
+}
+
+function clearPendingWalletAction(): void {
+  try {
+    localStorage.removeItem(PENDING_WALLET_ACTION_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 export function WalletDialog(props: WalletDialogProps) {
@@ -169,9 +228,100 @@ export function WalletDialog(props: WalletDialogProps) {
 
   createEffect(() => {
     if (props.open && auth.isLoggedIn()) {
-      void loadWallet();
+      void (async () => {
+        await resumePendingWalletAction();
+        await loadWallet();
+      })();
     }
   });
+
+  const completeWalletAction = async (action: PendingWalletAction): Promise<void> => {
+    if (action.type === 'create_wallet' || action.type === 'add_mint') {
+      const encrypted = await auth.nip44Encrypt(
+        action.pubkey,
+        JSON.stringify(walletContentToArray(action.content)),
+      );
+      const template = buildWalletEventTemplate(encrypted);
+      const reason =
+        action.type === 'create_wallet' ? t('Create Cashu wallet') : t('Add mint to wallet');
+      const { signedEvent } = await auth.signEvent({
+        event: template,
+        reason,
+      });
+
+      const writeRelays = getWriteRelays(action.pubkey);
+      pool.publish(writeRelays, signedEvent);
+
+      if (action.type === 'create_wallet') {
+        const emptyProofs = new Map<string, Proof[]>();
+        setWalletContent(action.content);
+        setProofsByMint(emptyProofs);
+        setWalletState('loaded');
+        setShowCreateForm(false);
+        setCreateMintUrls(['']);
+        writeWalletCache(action.pubkey, action.content, emptyProofs);
+      } else {
+        setWalletContent(action.content);
+        setAddMintUrl('');
+        setShowAddMint(false);
+        setShowDiscoverPanel(false);
+        writeWalletCache(action.pubkey, action.content, proofsByMint());
+      }
+
+      return;
+    }
+
+    const encrypted = await auth.nip44Encrypt(
+      action.pubkey,
+      JSON.stringify({ mint: action.mintUrl, proofs: action.proofs }),
+    );
+    const template = buildTokenEventTemplate(encrypted);
+    const { signedEvent } = await auth.signEvent({
+      event: template,
+      reason: t('Publish token event'),
+    });
+
+    const writeRelays = getWriteRelays(action.pubkey);
+    pool.publish(writeRelays, signedEvent);
+  };
+
+  const runWalletAction = async (action: PendingWalletAction): Promise<boolean> => {
+    writePendingWalletAction(action);
+
+    try {
+      await completeWalletAction(action);
+      clearPendingWalletAction();
+
+      return true;
+    } catch (err) {
+      if (isNip55NavigationError(err)) {
+        return false;
+      }
+
+      clearPendingWalletAction();
+      throw err;
+    }
+  };
+
+  const resumePendingWalletAction = async (): Promise<void> => {
+    const pending = readPendingWalletAction();
+
+    if (!pending) {
+      return;
+    }
+
+    try {
+      const completed = await runWalletAction(pending);
+
+      if (!completed) {
+        return;
+      }
+    } catch (err) {
+      console.error('[CashuWallet] Failed to resume pending action:', err);
+      setErrorMessage(t('Failed to create wallet.'));
+      clearPendingWalletAction();
+    }
+  };
 
   const handleCreateWallet = async (): Promise<void> => {
     const pubkey = auth.pubkey();
@@ -196,28 +346,11 @@ export function WalletDialog(props: WalletDialogProps) {
     try {
       const privkey = generateRandomHexString(64);
       const content: Nip60WalletContent = { privkey, mints: urls };
+      const completed = await runWalletAction({ type: 'create_wallet', pubkey, content });
 
-      const encrypted = await auth.nip44Encrypt(
-        pubkey,
-        JSON.stringify(walletContentToArray(content)),
-      );
-
-      const template = buildWalletEventTemplate(encrypted);
-
-      const { signedEvent } = await auth.signEvent({
-        event: template,
-        reason: t('Create Cashu wallet'),
-      });
-
-      const writeRelays = getWriteRelays(pubkey);
-      pool.publish(writeRelays, signedEvent);
-
-      setWalletContent(content);
-      setProofsByMint(new Map());
-      setWalletState('loaded');
-      setShowCreateForm(false);
-      setCreateMintUrls(['']);
-      writeWalletCache(pubkey, content, new Map());
+      if (!completed) {
+        return;
+      }
     } catch (err) {
       console.error('[CashuWallet] Create failed:', err);
       setErrorMessage(t('Failed to create wallet.'));
@@ -262,20 +395,11 @@ export function WalletDialog(props: WalletDialogProps) {
       }
 
       try {
-        const encrypted = await auth.nip44Encrypt(
-          pk,
-          JSON.stringify(walletContentToArray(updated)),
-        );
+        const completed = await runWalletAction({ type: 'add_mint', pubkey: pk, content: updated });
 
-        const template = buildWalletEventTemplate(encrypted);
-
-        const { signedEvent } = await auth.signEvent({
-          event: template,
-          reason: t('Add mint to wallet'),
-        });
-
-        const writeRelays = getWriteRelays(pk);
-        pool.publish(writeRelays, signedEvent);
+        if (!completed) {
+          return;
+        }
       } catch (err) {
         console.error('[CashuWallet] Add mint publish failed:', err);
         setErrorMessage(t('Failed to create wallet.'));
@@ -296,24 +420,14 @@ export function WalletDialog(props: WalletDialogProps) {
     });
   };
 
-  const publishTokenEvent = async (mintUrl: string, proofs: Proof[]): Promise<void> => {
+  const publishTokenEvent = async (mintUrl: string, proofs: Proof[]): Promise<boolean> => {
     const pk = auth.pubkey();
 
     if (!pk) {
-      return;
+      return false;
     }
 
-    const encrypted = await auth.nip44Encrypt(pk, JSON.stringify({ mint: mintUrl, proofs }));
-
-    const template = buildTokenEventTemplate(encrypted);
-
-    const { signedEvent } = await auth.signEvent({
-      event: template,
-      reason: t('Publish token event'),
-    });
-
-    const writeRelays = getWriteRelays(pk);
-    pool.publish(writeRelays, signedEvent);
+    return runWalletAction({ type: 'publish_token', pubkey: pk, mintUrl, proofs });
   };
 
   const openReceive = (mintUrl: string): void => {
@@ -434,13 +548,17 @@ export function WalletDialog(props: WalletDialogProps) {
         return next;
       });
 
-      await publishTokenEvent(mintUrl, merged);
-
       const wc = walletContent();
       const pk = auth.pubkey();
 
       if (wc && pk) {
         writeWalletCache(pk, wc, proofsByMint());
+      }
+
+      const completed = await publishTokenEvent(mintUrl, merged);
+
+      if (!completed) {
+        return;
       }
 
       closeMintPanel();
@@ -502,13 +620,17 @@ export function WalletDialog(props: WalletDialogProps) {
         return next;
       });
 
-      await publishTokenEvent(mintUrl, keep);
-
       const wc = walletContent();
       const pk = auth.pubkey();
 
       if (wc && pk) {
         writeWalletCache(pk, wc, proofsByMint());
+      }
+
+      const completed = await publishTokenEvent(mintUrl, keep);
+
+      if (!completed) {
+        return;
       }
     } catch (err) {
       console.error('[CashuWallet] Send failed:', err);

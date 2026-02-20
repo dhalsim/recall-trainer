@@ -14,6 +14,7 @@ export type { Nip55SignerData } from './types';
 
 const NIP55_PENDING_KEY = 'nip55_pending_request';
 const NIP55_RESULT_KEY = 'nip55_result';
+const NIP55_NAVIGATION_ERROR_CODE = 'NIP55_NAVIGATION';
 
 /** Base URL for NIP-55 callback (signer redirects here with ?event= result). */
 export function getNip55CallbackBaseUrl(): string {
@@ -49,25 +50,54 @@ export function buildNip55SignEventUri(event: EventTemplate): string {
   return `nostrsigner:${encodedEvent}?${params}`;
 }
 
-export type Nip55PendingType = 'get_public_key' | 'sign_event';
+/** Build nostrsigner: URI for nip44_encrypt. */
+export function buildNip55Nip44EncryptUri(pubkey: string, plaintext: string): string {
+  const base = getNip55CallbackBaseUrl();
+  const callbackUrl = encodeURIComponent(`${base}/?event=`);
+  const encodedPlaintext = encodeURIComponent(plaintext);
+  const encodedPubkey = encodeURIComponent(pubkey);
+  const params = `compressionType=none&returnType=signature&type=nip44_encrypt&pubkey=${encodedPubkey}&callbackUrl=${callbackUrl}`;
+
+  return `nostrsigner:${encodedPlaintext}?${params}`;
+}
+
+/** Build nostrsigner: URI for nip44_decrypt. */
+export function buildNip55Nip44DecryptUri(pubkey: string, ciphertext: string): string {
+  const base = getNip55CallbackBaseUrl();
+  const callbackUrl = encodeURIComponent(`${base}/?event=`);
+  const encodedCiphertext = encodeURIComponent(ciphertext);
+  const encodedPubkey = encodeURIComponent(pubkey);
+  const params = `compressionType=none&returnType=signature&type=nip44_decrypt&pubkey=${encodedPubkey}&callbackUrl=${callbackUrl}`;
+
+  return `nostrsigner:${encodedCiphertext}?${params}`;
+}
+
+export type Nip55PendingType = 'get_public_key' | 'sign_event' | 'nip44_encrypt' | 'nip44_decrypt';
+
+export type Nip55PendingPayload = {
+  event?: EventTemplate;
+  pubkey?: string;
+  plaintext?: string;
+  ciphertext?: string;
+};
 
 export interface Nip55PendingRequest {
   requestId: string;
   type: Nip55PendingType;
   timestamp: number;
-  event?: EventTemplate;
+  payload?: Nip55PendingPayload;
 }
 
 export function saveNip55PendingRequest(
   type: Nip55PendingType,
-  payload: { event?: EventTemplate },
+  payload: Nip55PendingPayload,
 ): void {
   const request: Nip55PendingRequest = {
     requestId:
       crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2),
     type,
     timestamp: Date.now(),
-    ...payload,
+    payload,
   };
 
   try {
@@ -172,6 +202,24 @@ export function parseNip55SignEventResult(result: string): NostrEvent {
   throw new Error('Invalid signed event from NIP-55 signer');
 }
 
+/** Parse NIP-55 nip44_encrypt/nip44_decrypt result as non-empty string. */
+export function parseNip55Nip44Result(result: string): string {
+  const trimmed = result.trim();
+
+  if (!trimmed) {
+    throw new Error('Invalid NIP-55 NIP-44 result');
+  }
+
+  return trimmed;
+}
+
+function createNip55NavigationError(): Error & { code: string } {
+  const err = new Error(NIP55_NAVIGATION_ERROR_CODE) as Error & { code: string };
+  err.code = NIP55_NAVIGATION_ERROR_CODE;
+
+  return err;
+}
+
 export class Nip55Provider implements NostrProvider {
   method = 'nip55' as const;
 
@@ -194,10 +242,23 @@ export class Nip55Provider implements NostrProvider {
     const url = buildNip55SignEventUri(params.event);
     window.location.href = url;
 
-    const err = new Error('NIP55_NAVIGATION') as Error & { code: string };
-    err.code = 'NIP55_NAVIGATION';
+    return Promise.reject(createNip55NavigationError()) as Promise<SignEventResult>;
+  }
 
-    return Promise.reject(err) as Promise<SignEventResult>;
+  async nip44Encrypt(pubkey: string, plaintext: string): Promise<string> {
+    saveNip55PendingRequest('nip44_encrypt', { pubkey, plaintext });
+    const url = buildNip55Nip44EncryptUri(pubkey, plaintext);
+    window.location.href = url;
+
+    return Promise.reject(createNip55NavigationError()) as Promise<string>;
+  }
+
+  async nip44Decrypt(pubkey: string, ciphertext: string): Promise<string> {
+    saveNip55PendingRequest('nip44_decrypt', { pubkey, ciphertext });
+    const url = buildNip55Nip44DecryptUri(pubkey, ciphertext);
+    window.location.href = url;
+
+    return Promise.reject(createNip55NavigationError()) as Promise<string>;
   }
 
   hasCapability(cap: ProviderCapability): boolean {
@@ -209,7 +270,7 @@ export class Nip55Provider implements NostrProvider {
       case 'getPublicKey':
         return true;
       case 'nip44':
-        return false;
+        return true;
       default:
         assertUnreachable(cap);
     }
