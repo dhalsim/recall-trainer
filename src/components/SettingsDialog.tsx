@@ -2,6 +2,7 @@ import { createEffect, createSignal, Show, For } from 'solid-js';
 
 import { t } from '../i18n';
 import { LANGUAGES, LANGUAGE_LABELS } from '../lib/language-pairs';
+import type { NostrProviderMethod } from '../lib/nostr/types';
 import type { AppLanguage } from '../store';
 import {
   QUESTIONS_PER_SESSION_DEFAULT,
@@ -15,9 +16,27 @@ interface SettingsDialogProps {
   onClose: () => void;
 }
 
+function getProviderLabel(method: NostrProviderMethod): string {
+  switch (method) {
+    case 'bunker':
+      return 'Bunker';
+    case 'nostrconnect':
+      return 'Nostr Connect';
+    case 'nip07':
+      return 'NIP-07';
+    case 'nip55':
+      return 'NIP-55';
+    case 'passkey_signer':
+      return 'Passkey signer';
+    case 'password_signer':
+      return 'Password signer';
+  }
+}
+
 export function SettingsDialog(props: SettingsDialogProps) {
   const [localQuestions, setLocalQuestions] = createSignal(store.state().questionsPerSession);
   const simulationMode = () => store.state().simulationMode;
+  const nostrProvider = () => store.state().authLoginState?.method ?? null;
 
   const effectiveAppLocale = (): AppLanguage =>
     store.state().appLocale ?? store.state().mainLanguage ?? 'en';
@@ -80,6 +99,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   )}
                 </For>
               </div>
+            </div>
+            <div>
+              <p class="block text-sm font-medium text-slate-700">{t('Nostr provider')}</p>
+              <p class="mt-1 text-sm text-slate-600">
+                <Show when={nostrProvider()} fallback={t('Not connected')}>
+                  {(method) => getProviderLabel(method())}
+                </Show>
+              </p>
             </div>
             <div>
               <label for="questions-per-session" class="block text-sm font-medium text-slate-700">

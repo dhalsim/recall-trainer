@@ -51,6 +51,8 @@
   "{{count}} vocabulary entries to practice.": "{{count}} vocabulary entries to practice.",
   "Hide mastered": "Hide mastered",
   "Application language": "Application language",
+  "Nostr provider": "Nostr provider",
+  "Not connected": "Not connected",
   "Settings": "Settings",
   "Questions per session": "Questions per session",
   "Close": "Close",

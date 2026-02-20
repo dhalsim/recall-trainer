@@ -51,6 +51,8 @@
   "{{count}} vocabulary entries to practice.": "練習する単語が {{count}} つあります。",
   "Hide mastered": "習得済みを隠す",
   "Application language": "アプリの言語",
+  "Nostr provider": "Nostr プロバイダー",
+  "Not connected": "未接続",
   "Settings": "設定",
   "Questions per session": "1回のテストあたりの出題数",
   "Close": "閉じる",

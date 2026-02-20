@@ -51,6 +51,8 @@
   "{{count}} vocabulary entries to practice.": "{{count}} kelime çifti pratik için hazır.",
   "Hide mastered": "Öğrenilenleri gizle",
   "Application language": "Uygulama dili",
+  "Nostr provider": "Nostr sağlayıcısı",
+  "Not connected": "Bağlı değil",
   "Settings": "Ayarlar",
   "Questions per session": "Oturum başına soru sayısı",
   "Close": "Kapat",
