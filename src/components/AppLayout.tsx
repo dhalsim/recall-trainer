@@ -1,10 +1,13 @@
 import type { JSX } from 'solid-js';
-import { createSignal } from 'solid-js';
+import { createSignal, Show } from 'solid-js';
 
 import { AppHeader } from './AppHeader';
 import { AppLogs } from './AppLogs';
 import { NostrConnectModal } from './NostrConnectModal';
 import { SettingsDialog } from './SettingsDialog';
+import { t } from '../i18n';
+import { ensureNip55ClipboardReadAccess } from '../lib/nostr/nip55ClipboardFlow';
+import { store } from '../store';
 
 interface AppLayoutProps {
   children?: JSX.Element;
@@ -18,6 +21,15 @@ export function AppLayout(props: AppLayoutProps) {
   const [showSettings, setShowSettings] = createSignal(false);
   const [showConnectModal, setShowConnectModal] = createSignal(false);
   const [showAppLogs, setShowAppLogs] = createSignal(false);
+  const [clipboardAccessGranted, setClipboardAccessGranted] = createSignal(false);
+  const [clipboardAccessError, setClipboardAccessError] = createSignal(false);
+  const isNip55Session = () => store.state().authLoginState?.method === 'nip55';
+
+  async function askForClipboardAccess(): Promise<void> {
+    const granted = await ensureNip55ClipboardReadAccess();
+    setClipboardAccessGranted(granted);
+    setClipboardAccessError(!granted);
+  }
 
   return (
     <div class="flex min-h-screen min-h-[100dvh] flex-col bg-slate-50 px-4 py-6 sm:px-6 sm:py-8">
@@ -27,6 +39,26 @@ export function AppLayout(props: AppLayoutProps) {
           onOpenConnect={() => setShowConnectModal(true)}
           onOpenSettings={() => setShowSettings(true)}
         />
+        <Show when={isNip55Session()}>
+          <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-xs text-amber-900">{t('Clipboard access is required for signing events.')}</p>
+              <button
+                type="button"
+                onClick={() => void askForClipboardAccess()}
+                class="shrink-0 rounded border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+              >
+                {t('Ask for access')}
+              </button>
+            </div>
+            <Show when={clipboardAccessGranted()}>
+              <p class="mt-1 text-xs text-green-700">{t('Clipboard access granted.')}</p>
+            </Show>
+            <Show when={clipboardAccessError()}>
+              <p class="mt-1 text-xs text-rose-700">{t('Clipboard access request was denied.')}</p>
+            </Show>
+          </div>
+        </Show>
       </header>
       <div class="mx-auto flex w-full max-w-2xl flex-1 flex-col">
         <main class="flex-1" role="main">

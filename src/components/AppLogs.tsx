@@ -1,4 +1,4 @@
-import { For, Show } from 'solid-js';
+import { createSignal, For, Show } from 'solid-js';
 
 import { t } from '../i18n';
 import { clearAppLogs, getAppLogs } from '../utils/logger';
@@ -14,6 +14,24 @@ function formatTimestamp(ts: number): string {
 
 export function AppLogs(props: AppLogsProps) {
   const logs = () => [...getAppLogs()].reverse();
+  const [copyState, setCopyState] = createSignal<'idle' | 'copied' | 'error'>('idle');
+
+  async function copyLogs(): Promise<void> {
+    const lines = logs().map((entry) => {
+      const cleanMsg = entry.msg.replace(/\s+/g, ' ').trim();
+
+      return `${entry.type.toUpperCase()} | ${new Date(entry.timestamp).toISOString()} | ${cleanMsg}`;
+    });
+
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setCopyState('copied');
+      setTimeout(() => setCopyState('idle'), 2000);
+    } catch {
+      setCopyState('error');
+      setTimeout(() => setCopyState('idle'), 2500);
+    }
+  }
 
   return (
     <Show when={props.open}>
@@ -37,18 +55,33 @@ export function AppLogs(props: AppLogsProps) {
           class="relative z-10 w-full max-w-lg rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between gap-2">
             <h2 id="app-logs-title" class="text-lg font-semibold text-slate-900">
               {t('App logs')}
             </h2>
-            <button
-              type="button"
-              onClick={clearAppLogs}
-              class="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            >
-              {t('Clear')}
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void copyLogs()}
+                class="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                {t('Copy Logs')}
+              </button>
+              <button
+                type="button"
+                onClick={clearAppLogs}
+                class="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                {t('Clear')}
+              </button>
+            </div>
           </div>
+          <Show when={copyState() === 'copied'}>
+            <p class="mt-2 text-xs text-green-700">{t('Copied')}</p>
+          </Show>
+          <Show when={copyState() === 'error'}>
+            <p class="mt-2 text-xs text-rose-700">{t('Failed to copy logs.')}</p>
+          </Show>
 
           <div class="mt-4 max-h-[60vh] overflow-y-auto rounded-lg border border-slate-200 p-3">
             <Show

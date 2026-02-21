@@ -36,7 +36,7 @@ import { logger } from '../utils/logger';
 import { assertUnreachable, DEFAULT_READ_RELAYS, pool } from '../utils/nostr';
 
 export type { BunkerSignerData, NostrConnectData, LoginResult, NostrProvider };
-const { error: logError } = logger();
+const { log, error: logError } = logger();
 
 interface NostrAuthContextValue {
   provider: NostrProvider | null;
@@ -85,6 +85,10 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     nip44Encrypt: null,
     nip44Decrypt: null,
   });
+
+  const [lastConsumedNip55RequestId, setLastConsumedNip55RequestId] = createSignal<string | null>(
+    null,
+  );
 
   // Resolve pubkey when provider changes
   createEffect(() => {
@@ -138,11 +142,27 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
   });
 
   createEffect(() => {
+    if (typeof window !== 'undefined') {
+      log(
+        `[NostrAuth] NIP-55 effect tick. currentUrl=${window.location.pathname}${window.location.search}`,
+      );
+    }
+
     checkNip55Callback();
 
     const nip55Result = getNip55Result();
 
     if (nip55Result) {
+      if (lastConsumedNip55RequestId() === nip55Result.requestId) {
+        log(`[NostrAuth] Duplicate NIP-55 callback ignored. requestId=${nip55Result.requestId}`);
+        clearNip55Result();
+
+        return;
+      }
+
+      setLastConsumedNip55RequestId(nip55Result.requestId);
+      log(`[NostrAuth] Consuming NIP-55 callback result. type=${nip55Result.type}`);
+
       if (nip55Result.type === 'get_public_key') {
         store.setAuthLoginState({
           method: 'nip55',
@@ -151,6 +171,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
         });
 
         setProvider(createNip55Provider({ pubkey: nip55Result.result }));
+        log('[NostrAuth] NIP-55 login restored from get_public_key callback.');
         clearNip55Result();
       } else if (nip55Result.type === 'sign_event') {
         const auth = store.state().authLoginState;
@@ -161,14 +182,17 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
         const p = nip55Data ? createNip55Provider(nip55Data) : createNip55Provider({ pubkey: '' });
         const signedEvent = parseNip55SignEventResult(nip55Result.result);
         setPendingNip55Result((prev) => ({ ...prev, signEvent: { signedEvent, provider: p } }));
+        log('[NostrAuth] Stored pending NIP-55 sign_event result.');
         clearNip55Result();
       } else if (nip55Result.type === 'nip44_encrypt') {
         const encrypted = parseNip55Nip44Result(nip55Result.result);
         setPendingNip55Result((prev) => ({ ...prev, nip44Encrypt: encrypted }));
+        log('[NostrAuth] Stored pending NIP-55 nip44_encrypt result.');
         clearNip55Result();
       } else if (nip55Result.type === 'nip44_decrypt') {
         const decrypted = parseNip55Nip44Result(nip55Result.result);
         setPendingNip55Result((prev) => ({ ...prev, nip44Decrypt: decrypted }));
+        log('[NostrAuth] Stored pending NIP-55 nip44_decrypt result.');
         clearNip55Result();
       }
     }
@@ -322,6 +346,8 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
   const loginWithNip55 = async (data: Nip55SignerData): Promise<LoginResult> => {
     try {
+      log('[NostrAuth] loginWithNip55 called.');
+
       store.setAuthLoginState({
         method: 'nip55',
         loggedIn: true,
@@ -331,6 +357,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
       const p = createNip55Provider(data);
 
       setProvider(p);
+      log('[NostrAuth] NIP-55 provider initialized.');
 
       return { success: true, provider: p };
     } catch (error) {

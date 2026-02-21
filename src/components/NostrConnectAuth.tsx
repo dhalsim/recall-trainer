@@ -1,13 +1,15 @@
 /* eslint-disable solid/no-innerhtml -- QR code SVG from qrcode library (our-generated URI only) */
+import { nip19 } from 'nostr-tools';
 import { hexToBytes } from 'nostr-tools/utils';
 import qrcode from 'qrcode';
-import { For, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, For, onCleanup, onMount, Show } from 'solid-js';
 import { createSignal } from 'solid-js';
 
 import { useNostrAuth } from '../contexts/NostrAuthContext';
 import { t } from '../i18n';
+import { ensureNip55ClipboardReadAccess } from '../lib/nostr/nip55ClipboardFlow';
 import { isNip07Available } from '../lib/nostr/Nip07Provider';
-import { buildNip55GetPublicKeyUri, saveNip55PendingRequest } from '../lib/nostr/Nip55Provider';
+import { startNip55GetPublicKeyFlow } from '../lib/nostr/Nip55Provider';
 import {
   decryptContent,
   generateNostrConnectUri,
@@ -29,7 +31,7 @@ interface NostrConnectAuthProps {
   }) => void;
   onError: (error: string) => void;
 }
-const { error: logError } = logger();
+const { log, error: logError } = logger();
 
 function isAndroid(): boolean {
   if (typeof navigator === 'undefined') {
@@ -77,6 +79,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
 
   const {
     loginWithBunker,
+    loginWithNip55,
     loginWithNostrConnect,
     loginWithNip07,
     loginWithPasskey,
@@ -103,6 +106,15 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   const [passwordLoginPassword, setPasswordLoginPassword] = createSignal('');
   const [bunkerUrl, setBunkerUrl] = createSignal('');
   const [bunkerLoading, setBunkerLoading] = createSignal(false);
+  const [nip55Waiting, setNip55Waiting] = createSignal(false);
+  const [nip55TimedOut, setNip55TimedOut] = createSignal(false);
+  const [nip55ManualResult, setNip55ManualResult] = createSignal('');
+  const [nip55ManualLoading, setNip55ManualLoading] = createSignal(false);
+  const [nip55AccessGranted, setNip55AccessGranted] = createSignal(false);
+
+  const [nip55TimeoutId, setNip55TimeoutId] = createSignal<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const [currentSubscription, setCurrentSubscription] = createSignal<{ close: () => void } | null>(
     null,
@@ -130,7 +142,13 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   function startSubscription(ephemeralData: NostrConnectData) {
     const relayList = ephemeralData.relays.filter((u) => u.trim().length > 0);
 
+    log(
+      `[NostrConnectAuth] startSubscription called. relays=${relayList.length}, ephemeralPubkey=${ephemeralData.ephemeralPubkey}`,
+    );
+
     if (relayList.length === 0) {
+      log('[NostrConnectAuth] startSubscription aborted: no relay provided.');
+
       return;
     }
 
@@ -144,11 +162,16 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
       },
       {
         onevent(evt) {
+          log(
+            `[NostrConnectAuth] connect response event received. kind=${evt.kind}, pubkey=${evt.pubkey}`,
+          );
+
           const ephemeralSecret = hexToBytes(ephemeralData.ephemeralSecret);
 
           const decrypted = decryptContent(evt.content, evt.pubkey, ephemeralSecret);
 
           if (!decrypted) {
+            log('[NostrConnectAuth] decryptContent returned null.');
             props.onError(t('Encryption format not recognized'));
 
             return;
@@ -168,20 +191,24 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
           const responseSecret = responseData.result;
 
           if (responseSecret !== ephemeralData.connectionSecret) {
+            log('[NostrConnectAuth] connection secret mismatch.');
             props.onError(t('Connection secret mismatch'));
 
             return;
           }
 
           ephemeralData.remoteSignerPubkey = evt.pubkey;
+          log(`[NostrConnectAuth] remote signer connected. pubkey=${evt.pubkey}`);
 
           /* eslint-disable-next-line solid/reactivity -- async relay callback; state updates on result */
           void loginWithNostrConnect(ephemeralData).then((result) => {
             if (result.success) {
+              log('[NostrConnectAuth] loginWithNostrConnect succeeded.');
               setCurrentSubscription(null);
               sub.close();
               props.onSuccess(result);
             } else {
+              log('[NostrConnectAuth] loginWithNostrConnect returned success=false.');
               props.onError(t('Login failed'));
             }
           });
@@ -193,19 +220,23 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   }
 
   async function refresh() {
+    log('[NostrConnectAuth] refresh called.');
     const currentSub = currentSubscription();
 
     if (currentSub) {
+      log('[NostrConnectAuth] closing previous subscription before refresh.');
       currentSub.close();
       setCurrentSubscription(null);
     }
 
     setIsTyping(false);
     const relayList = relays().filter((u) => u.trim().length > 0);
+    log(`[NostrConnectAuth] refresh relay count=${relayList.length}.`);
 
     if (relayList.length === 0) {
       setRelays([...DEFAULT_WRITE_RELAYS]);
       props.onError(t('Add at least one relay URL'));
+      log('[NostrConnectAuth] refresh aborted: no relay after filtering.');
 
       return;
     }
@@ -213,9 +244,11 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
     const { uri, ephemeralData } = generateNostrConnectUri(relayList);
 
     setGeneratedUri(uri);
+    log('[NostrConnectAuth] URI generated; starting QR generation.');
     setIsWaitingForConnection(true);
     props.onError('');
     await generateQrSvg(uri);
+    log('[NostrConnectAuth] QR ready; starting subscription.');
     startSubscription(ephemeralData);
   }
 
@@ -291,19 +324,138 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   }
 
   function openAndroidSigner() {
-    saveNip55PendingRequest('get_public_key', {});
-    window.location.href = buildNip55GetPublicKeyUri();
+    log('[NostrConnectAuth] Starting NIP-55 get_public_key flow (Android signer).');
+    setNip55Waiting(true);
+    setNip55TimedOut(false);
+    props.onError('');
+    const existingTimeout = nip55TimeoutId();
+
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    const timeoutId = setTimeout(() => {
+      if (!nip55Waiting()) {
+        return;
+      }
+
+      setNip55TimedOut(true);
+      log('[NostrConnectAuth] NIP-55 get_public_key timed out.');
+      props.onError(t('NIP-55 login timed out. Return from signer and try again.'));
+    }, 60_000);
+
+    setNip55TimeoutId(timeoutId);
+    startNip55GetPublicKeyFlow();
+  }
+
+  function normalizeNip55ManualPubkey(raw: string): string | null {
+    const trimmed = raw.trim();
+
+    if (!trimmed) {
+      return null;
+    }
+
+    if (/^[a-fA-F0-9]{64}$/.test(trimmed)) {
+      return trimmed.toLowerCase();
+    }
+
+    if (trimmed.startsWith('npub')) {
+      try {
+        const decoded = nip19.decode(trimmed);
+
+        if (decoded.type === 'npub' && typeof decoded.data === 'string') {
+          return decoded.data.toLowerCase();
+        }
+      } catch (error) {
+        logError('[NostrConnectAuth] Failed to decode manual npub result:', error);
+      }
+    }
+
+    return null;
+  }
+
+  async function submitManualNip55Result(): Promise<void> {
+    const normalizedPubkey = normalizeNip55ManualPubkey(nip55ManualResult());
+
+    if (!normalizedPubkey) {
+      props.onError(t('Invalid signer result. Paste a valid hex pubkey or npub.'));
+
+      return;
+    }
+
+    setNip55ManualLoading(true);
+    props.onError('');
+
+    try {
+      const result = await loginWithNip55({ pubkey: normalizedPubkey });
+
+      if (result.success) {
+        setNip55Waiting(false);
+        setNip55TimedOut(false);
+        const timeoutId = nip55TimeoutId();
+
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          setNip55TimeoutId(null);
+        }
+
+        props.onSuccess(result);
+      } else {
+        props.onError(t('Login failed'));
+      }
+    } catch (error) {
+      logError('[NostrConnectAuth] Manual NIP-55 login failed:', error);
+      props.onError(error instanceof Error ? error.message : t('Login failed'));
+    } finally {
+      setNip55ManualLoading(false);
+    }
+  }
+
+  async function askForClipboardAccess(): Promise<void> {
+    const granted = await ensureNip55ClipboardReadAccess();
+    setNip55AccessGranted(granted);
+
+    if (granted) {
+      props.onError('');
+      log('[NostrConnectAuth] Clipboard access granted by user gesture.');
+
+      return;
+    }
+
+    props.onError(t('Clipboard access request was denied.'));
   }
 
   onMount(() => {
     const f = flow();
+    log(`[NostrConnectAuth] onMount flow=${String(f)}`);
 
     if (showNostrConnect(f)) {
+      log('[NostrConnectAuth] onMount will call refresh() for Nostr Connect flow.');
       void refresh();
+    } else {
+      log('[NostrConnectAuth] onMount skipped refresh() because flow is not Nostr Connect.');
     }
 
     if (showPasskeyCreate(f) || showPasskeyLogin(f)) {
       void isPasskeySupported().then(setPasskeySupported);
+    }
+  });
+
+  createEffect(() => {
+    const method = authState()?.method;
+
+    if (!nip55Waiting() || method !== 'nip55') {
+      return;
+    }
+
+    log('[NostrConnectAuth] NIP-55 login completed; stopping waiting state.');
+    setNip55Waiting(false);
+    setNip55TimedOut(false);
+    const timeoutId = nip55TimeoutId();
+
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      setNip55TimeoutId(null);
     }
   });
 
@@ -334,6 +486,12 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
 
     if (sub) {
       sub.close();
+    }
+
+    const timeoutId = nip55TimeoutId();
+
+    if (timeoutId) {
+      clearTimeout(timeoutId);
     }
   });
 
@@ -667,13 +825,64 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
               <p class="text-center text-sm text-slate-600">
                 {t('On Android you can open your signer app directly.')}
               </p>
+              <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-left text-xs text-amber-800">
+                    {t('Clipboard access is required for Amber login. Please allow clipboard access.')}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void askForClipboardAccess()}
+                    class="shrink-0 rounded border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                  >
+                    {t('Ask for access')}
+                  </button>
+                </div>
+                <Show when={nip55AccessGranted()}>
+                  <p class="mt-1 text-xs text-green-700">{t('Clipboard access granted.')}</p>
+                </Show>
+              </div>
               <button
                 type="button"
-                onClick={openAndroidSigner}
+                onClick={() => void openAndroidSigner()}
                 class="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-400 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
               >
                 {t('Open Android Signer')}
               </button>
+              <Show when={nip55Waiting()}>
+                <p class="text-center text-xs text-slate-500">
+                  {t('Waiting for Android signer response…')}
+                </p>
+              </Show>
+              <Show when={nip55TimedOut()}>
+                <p class="text-center text-xs text-amber-700">
+                  {t('NIP-55 login timed out. Return from signer and try again.')}
+                </p>
+              </Show>
+              <div class="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p class="text-xs text-slate-600">
+                  {t('If clipboard auto-detect fails, paste signer result manually.')}
+                </p>
+                <textarea
+                  value={nip55ManualResult()}
+                  onInput={(e) => setNip55ManualResult(e.currentTarget.value)}
+                  rows={2}
+                  placeholder={t('Paste pubkey or npub from Amber')}
+                  class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={nip55ManualLoading() || nip55ManualResult().trim().length === 0}
+                    onClick={() => void submitManualNip55Result()}
+                    class="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:opacity-50"
+                  >
+                    <Show when={nip55ManualLoading()} fallback={t('Use pasted result')}>
+                      {t('Connecting…')}
+                    </Show>
+                  </button>
+                </div>
+              </div>
             </Show>
           </div>
         </Show>
