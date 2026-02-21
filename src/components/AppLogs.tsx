@@ -28,7 +28,11 @@ export function AppLogs(props: AppLogsProps) {
           }
         }}
       >
-        <div class="fixed inset-0 bg-slate-900/50" aria-hidden="true" onClick={() => props.onClose()} />
+        <div
+          class="fixed inset-0 bg-slate-900/50"
+          aria-hidden="true"
+          onClick={() => props.onClose()}
+        />
         <div
           class="relative z-10 w-full max-w-lg rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
           onClick={(e) => e.stopPropagation()}
@@ -47,7 +51,10 @@ export function AppLogs(props: AppLogsProps) {
           </div>
 
           <div class="mt-4 max-h-[60vh] overflow-y-auto rounded-lg border border-slate-200 p-3">
-            <Show when={logs().length > 0} fallback={<p class="text-sm text-slate-500">{t('No logs yet')}</p>}>
+            <Show
+              when={logs().length > 0}
+              fallback={<p class="text-sm text-slate-500">{t('No logs yet')}</p>}
+            >
               <ul class="space-y-2">
                 <For each={logs()}>
                   {(entry) => (

@@ -1,8 +1,8 @@
 import type { JSX } from 'solid-js';
 import { createSignal } from 'solid-js';
 
-import { AppLogs } from './AppLogs';
 import { AppHeader } from './AppHeader';
+import { AppLogs } from './AppLogs';
 import { NostrConnectModal } from './NostrConnectModal';
 import { SettingsDialog } from './SettingsDialog';
 

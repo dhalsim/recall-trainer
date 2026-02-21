@@ -1,5 +1,5 @@
-import type { Nip65Relays } from '../nostr/nip65';
 import { logger } from '../../utils/logger';
+import type { Nip65Relays } from '../nostr/nip65';
 const { error } = logger();
 
 export type StoredProfile = {

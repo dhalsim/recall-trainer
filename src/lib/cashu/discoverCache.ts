@@ -5,6 +5,7 @@
 
 import type { GetInfoResponse } from '@cashu/cashu-ts';
 import type { Event } from 'nostr-tools';
+
 import { logger } from '../../utils/logger';
 
 import { getMintInfo } from './mintInfo';
