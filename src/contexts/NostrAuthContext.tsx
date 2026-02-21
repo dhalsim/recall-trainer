@@ -1,8 +1,20 @@
 import type { JSX } from 'solid-js';
-import { createContext, createEffect, createSignal, onCleanup, onMount, useContext } from 'solid-js';
+import {
+  createContext,
+  createEffect,
+  createSignal,
+  onCleanup,
+  onMount,
+  useContext,
+} from 'solid-js';
 
 import { connectBunker, createBunkerProvider } from '../lib/nostr/BunkerProvider';
 import { createNip07Provider } from '../lib/nostr/Nip07Provider';
+import {
+  NIP55_PENDING_KEY,
+  NIP55_RESULT_KEY,
+  NIP55_RESULT_READY_EVENT,
+} from '../lib/nostr/nip55ClipboardFlow';
 import {
   checkNip55Callback,
   clearNip55Result,
@@ -13,7 +25,6 @@ import {
 } from '../lib/nostr/Nip55Provider';
 import { clearRelays, getRelays, subscribeRelays } from '../lib/nostr/nip65';
 import { clearSyncState, subscribeSyncEvents } from '../lib/nostr/nip78';
-import { NIP55_RESULT_READY_EVENT } from '../lib/nostr/nip55ClipboardFlow';
 import {
   createNostrConnectProvider,
   type NostrConnectData,
@@ -90,6 +101,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
   const [lastConsumedNip55RequestId, setLastConsumedNip55RequestId] = createSignal<string | null>(
     null,
   );
+
   const [nip55ResultTick, setNip55ResultTick] = createSignal(0);
 
   onMount(() => {
@@ -162,15 +174,25 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
   createEffect(() => {
     nip55ResultTick();
 
-    if (typeof window !== 'undefined') {
+    const auth = store.state().authLoginState;
+
+    const shouldProcessNip55 =
+      typeof window !== 'undefined' &&
+      (auth?.method === 'nip55' ||
+        localStorage.getItem(NIP55_PENDING_KEY) !== null ||
+        localStorage.getItem(NIP55_RESULT_KEY) !== null);
+
+    let nip55Result = null;
+
+    if (shouldProcessNip55) {
       log(
         `[NostrAuth] NIP-55 effect tick. currentUrl=${window.location.pathname}${window.location.search}`,
       );
+
+      checkNip55Callback();
+
+      nip55Result = getNip55Result();
     }
-
-    checkNip55Callback();
-
-    const nip55Result = getNip55Result();
 
     if (nip55Result) {
       if (lastConsumedNip55RequestId() === nip55Result.requestId) {
@@ -216,8 +238,6 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
         clearNip55Result();
       }
     }
-
-    const auth = store.state().authLoginState;
 
     if (!nip55Result || nip55Result.type !== 'get_public_key') {
       const hasDataOrNip07 = auth?.loggedIn && (auth.method === 'nip07' || auth.data !== undefined);

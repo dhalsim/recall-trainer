@@ -1,16 +1,17 @@
 import type { JSX } from 'solid-js';
 import { createSignal, Show } from 'solid-js';
 
-import { AppHeader } from './AppHeader';
-import { AppLogs } from './AppLogs';
-import { NostrConnectModal } from './NostrConnectModal';
-import { SettingsDialog } from './SettingsDialog';
 import { t } from '../i18n';
 import {
   ensureNip55ClipboardReadAccess,
   isNip55ClipboardAccessGranted,
 } from '../lib/nostr/nip55ClipboardFlow';
 import { store } from '../store';
+
+import { AppHeader } from './AppHeader';
+import { AppLogs } from './AppLogs';
+import { NostrConnectModal } from './NostrConnectModal';
+import { SettingsDialog } from './SettingsDialog';
 
 interface AppLayoutProps {
   children?: JSX.Element;
@@ -43,7 +44,9 @@ export function AppLayout(props: AppLayoutProps) {
         <Show when={isNip55Session() && !isNip55ClipboardAccessGranted()}>
           <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
             <div class="flex items-center justify-between gap-2">
-              <p class="text-xs text-amber-900">{t('Clipboard access is required for signing events.')}</p>
+              <p class="text-xs text-amber-900">
+                {t('Clipboard access is required for signing events.')}
+              </p>
               <button
                 type="button"
                 onClick={() => void askForClipboardAccess()}

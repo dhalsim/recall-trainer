@@ -7,11 +7,11 @@ import { createSignal } from 'solid-js';
 
 import { useNostrAuth } from '../contexts/NostrAuthContext';
 import { t } from '../i18n';
+import { isNip07Available } from '../lib/nostr/Nip07Provider';
 import {
   ensureNip55ClipboardReadAccess,
   isNip55ClipboardAccessGranted,
 } from '../lib/nostr/nip55ClipboardFlow';
-import { isNip07Available } from '../lib/nostr/Nip07Provider';
 import { createNip55Provider, startNip55GetPublicKeyFlow } from '../lib/nostr/Nip55Provider';
 import {
   decryptContent,
@@ -466,8 +466,15 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
       return;
     }
 
-    if (authLogin?.data && 'pubkey' in authLogin.data && typeof authLogin.data.pubkey === 'string') {
-      props.onSuccess({ success: true, provider: createNip55Provider({ pubkey: authLogin.data.pubkey }) });
+    if (
+      authLogin?.data &&
+      'pubkey' in authLogin.data &&
+      typeof authLogin.data.pubkey === 'string'
+    ) {
+      props.onSuccess({
+        success: true,
+        provider: createNip55Provider({ pubkey: authLogin.data.pubkey }),
+      });
 
       return;
     }
@@ -845,7 +852,9 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
                 <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
                   <div class="flex items-center justify-between gap-2">
                     <p class="text-left text-xs text-amber-800">
-                      {t('Clipboard access is required for Amber login. Please allow clipboard access.')}
+                      {t(
+                        'Clipboard access is required for Amber login. Please allow clipboard access.',
+                      )}
                     </p>
                     <button
                       type="button"
