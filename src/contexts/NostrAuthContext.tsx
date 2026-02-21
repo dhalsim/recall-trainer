@@ -1,5 +1,5 @@
 import type { JSX } from 'solid-js';
-import { createContext, createEffect, createSignal, useContext } from 'solid-js';
+import { createContext, createEffect, createSignal, onCleanup, onMount, useContext } from 'solid-js';
 
 import { connectBunker, createBunkerProvider } from '../lib/nostr/BunkerProvider';
 import { createNip07Provider } from '../lib/nostr/Nip07Provider';
@@ -13,6 +13,7 @@ import {
 } from '../lib/nostr/Nip55Provider';
 import { clearRelays, getRelays, subscribeRelays } from '../lib/nostr/nip65';
 import { clearSyncState, subscribeSyncEvents } from '../lib/nostr/nip78';
+import { NIP55_RESULT_READY_EVENT } from '../lib/nostr/nip55ClipboardFlow';
 import {
   createNostrConnectProvider,
   type NostrConnectData,
@@ -89,6 +90,23 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
   const [lastConsumedNip55RequestId, setLastConsumedNip55RequestId] = createSignal<string | null>(
     null,
   );
+  const [nip55ResultTick, setNip55ResultTick] = createSignal(0);
+
+  onMount(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const onResultReady = () => setNip55ResultTick((v) => v + 1);
+    const onFocus = () => setNip55ResultTick((v) => v + 1);
+    window.addEventListener(NIP55_RESULT_READY_EVENT, onResultReady);
+    window.addEventListener('focus', onFocus);
+
+    onCleanup(() => {
+      window.removeEventListener(NIP55_RESULT_READY_EVENT, onResultReady);
+      window.removeEventListener('focus', onFocus);
+    });
+  });
 
   // Resolve pubkey when provider changes
   createEffect(() => {
@@ -142,6 +160,8 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
   });
 
   createEffect(() => {
+    nip55ResultTick();
+
     if (typeof window !== 'undefined') {
       log(
         `[NostrAuth] NIP-55 effect tick. currentUrl=${window.location.pathname}${window.location.search}`,

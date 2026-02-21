@@ -4,6 +4,7 @@ import { logger } from '../../utils/logger';
 
 export const NIP55_PENDING_KEY = 'nip55_pending_request';
 export const NIP55_RESULT_KEY = 'nip55_result';
+export const NIP55_RESULT_READY_EVENT = 'nip55-result-ready';
 
 const NIP55_CLIPBOARD_FLOW_KEY = 'nip55_clipboard_flow_state';
 const CLIPBOARD_POLL_MS = 800;
@@ -170,8 +171,11 @@ function persistResult(requestId: string, type: Nip55PendingType, result: string
 
       if (existing.requestId === requestId) {
         log(
-          `[NIP-55][Clipboard] Result already exists for requestId=${requestId}; skipping overwrite.`,
+          `[NIP-55][Clipboard] Result already exists for requestId=${requestId}; clearing stale pending state.`,
         );
+
+        localStorage.removeItem(NIP55_PENDING_KEY);
+        saveFlowStateToStorage(null);
 
         return;
       }
@@ -180,6 +184,7 @@ function persistResult(requestId: string, type: Nip55PendingType, result: string
     localStorage.setItem(NIP55_RESULT_KEY, JSON.stringify({ requestId, type, result }));
     localStorage.removeItem(NIP55_PENDING_KEY);
     log(`[NIP-55][Clipboard] Stored result from clipboard. type=${type}, requestId=${requestId}`);
+    window.dispatchEvent(new Event(NIP55_RESULT_READY_EVENT));
   } catch (error) {
     logError('[NIP-55][Clipboard] Failed to store clipboard result:', error);
   }
@@ -351,6 +356,23 @@ export async function resumeNip55ClipboardFlowFromPending(): Promise<void> {
 
     if (typeof pending.requestId !== 'string' || typeof pending.type !== 'string') {
       return;
+    }
+
+    const existingResultRaw = localStorage.getItem(NIP55_RESULT_KEY);
+
+    if (existingResultRaw) {
+      const existingResult = JSON.parse(existingResultRaw) as { requestId?: string };
+
+      if (existingResult.requestId === pending.requestId) {
+        log(
+          `[NIP-55][Clipboard] Pending request already has stored result. requestId=${pending.requestId}; stopping resume.`,
+        );
+
+        localStorage.removeItem(NIP55_PENDING_KEY);
+        saveFlowStateToStorage(null);
+
+        return;
+      }
     }
 
     const persistedState = readFlowStateFromStorage();
