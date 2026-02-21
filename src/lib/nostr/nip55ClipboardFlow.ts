@@ -1,4 +1,5 @@
 import { nip19 } from 'nostr-tools';
+import { createSignal } from 'solid-js';
 
 import { logger } from '../../utils/logger';
 
@@ -11,6 +12,7 @@ const CLIPBOARD_POLL_MS = 800;
 const CLIPBOARD_TIMEOUT_MS = 60_000;
 
 const { log, error: logError } = logger();
+const [clipboardAccessGranted, setClipboardAccessGranted] = createSignal(false);
 
 export type Nip55PendingType = 'get_public_key' | 'sign_event' | 'nip44_encrypt' | 'nip44_decrypt';
 
@@ -196,7 +198,10 @@ async function readClipboard(): Promise<string | null> {
       return null;
     }
 
-    return await navigator.clipboard.readText();
+    const value = await navigator.clipboard.readText();
+    setClipboardAccessGranted(true);
+
+    return value;
   } catch {
     return null;
   }
@@ -215,6 +220,7 @@ export async function ensureNip55ClipboardReadAccess(): Promise<boolean> {
     }
 
     await navigator.clipboard.readText();
+    setClipboardAccessGranted(true);
     log('[NIP-55][Clipboard] Clipboard read access available.');
 
     return true;
@@ -223,6 +229,10 @@ export async function ensureNip55ClipboardReadAccess(): Promise<boolean> {
 
     return false;
   }
+}
+
+export function isNip55ClipboardAccessGranted(): boolean {
+  return clipboardAccessGranted();
 }
 
 function installCheckers(flow: RunningFlow): void {

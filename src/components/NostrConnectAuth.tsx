@@ -7,7 +7,10 @@ import { createSignal } from 'solid-js';
 
 import { useNostrAuth } from '../contexts/NostrAuthContext';
 import { t } from '../i18n';
-import { ensureNip55ClipboardReadAccess } from '../lib/nostr/nip55ClipboardFlow';
+import {
+  ensureNip55ClipboardReadAccess,
+  isNip55ClipboardAccessGranted,
+} from '../lib/nostr/nip55ClipboardFlow';
 import { isNip07Available } from '../lib/nostr/Nip07Provider';
 import { startNip55GetPublicKeyFlow } from '../lib/nostr/Nip55Provider';
 import {
@@ -110,7 +113,6 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   const [nip55TimedOut, setNip55TimedOut] = createSignal(false);
   const [nip55ManualResult, setNip55ManualResult] = createSignal('');
   const [nip55ManualLoading, setNip55ManualLoading] = createSignal(false);
-  const [nip55AccessGranted, setNip55AccessGranted] = createSignal(false);
 
   const [nip55TimeoutId, setNip55TimeoutId] = createSignal<ReturnType<typeof setTimeout> | null>(
     null,
@@ -413,7 +415,6 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
 
   async function askForClipboardAccess(): Promise<void> {
     const granted = await ensureNip55ClipboardReadAccess();
-    setNip55AccessGranted(granted);
 
     if (granted) {
       props.onError('');
@@ -825,23 +826,22 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
               <p class="text-center text-sm text-slate-600">
                 {t('On Android you can open your signer app directly.')}
               </p>
-              <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-                <div class="flex items-center justify-between gap-2">
-                  <p class="text-left text-xs text-amber-800">
-                    {t('Clipboard access is required for Amber login. Please allow clipboard access.')}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void askForClipboardAccess()}
-                    class="shrink-0 rounded border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
-                  >
-                    {t('Ask for access')}
-                  </button>
+              <Show when={!isNip55ClipboardAccessGranted()}>
+                <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="text-left text-xs text-amber-800">
+                      {t('Clipboard access is required for Amber login. Please allow clipboard access.')}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void askForClipboardAccess()}
+                      class="shrink-0 rounded border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                    >
+                      {t('Ask for access')}
+                    </button>
+                  </div>
                 </div>
-                <Show when={nip55AccessGranted()}>
-                  <p class="mt-1 text-xs text-green-700">{t('Clipboard access granted.')}</p>
-                </Show>
-              </div>
+              </Show>
               <button
                 type="button"
                 onClick={() => void openAndroidSigner()}
@@ -860,9 +860,11 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
                 </p>
               </Show>
               <div class="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p class="text-xs text-slate-600">
-                  {t('If clipboard auto-detect fails, paste signer result manually.')}
-                </p>
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-xs text-slate-600">
+                    {t('If clipboard auto-detect fails, paste signer result manually.')}
+                  </p>
+                </div>
                 <textarea
                   value={nip55ManualResult()}
                   onInput={(e) => setNip55ManualResult(e.currentTarget.value)}

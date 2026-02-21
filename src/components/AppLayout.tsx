@@ -6,7 +6,10 @@ import { AppLogs } from './AppLogs';
 import { NostrConnectModal } from './NostrConnectModal';
 import { SettingsDialog } from './SettingsDialog';
 import { t } from '../i18n';
-import { ensureNip55ClipboardReadAccess } from '../lib/nostr/nip55ClipboardFlow';
+import {
+  ensureNip55ClipboardReadAccess,
+  isNip55ClipboardAccessGranted,
+} from '../lib/nostr/nip55ClipboardFlow';
 import { store } from '../store';
 
 interface AppLayoutProps {
@@ -21,13 +24,11 @@ export function AppLayout(props: AppLayoutProps) {
   const [showSettings, setShowSettings] = createSignal(false);
   const [showConnectModal, setShowConnectModal] = createSignal(false);
   const [showAppLogs, setShowAppLogs] = createSignal(false);
-  const [clipboardAccessGranted, setClipboardAccessGranted] = createSignal(false);
   const [clipboardAccessError, setClipboardAccessError] = createSignal(false);
   const isNip55Session = () => store.state().authLoginState?.method === 'nip55';
 
   async function askForClipboardAccess(): Promise<void> {
     const granted = await ensureNip55ClipboardReadAccess();
-    setClipboardAccessGranted(granted);
     setClipboardAccessError(!granted);
   }
 
@@ -39,7 +40,7 @@ export function AppLayout(props: AppLayoutProps) {
           onOpenConnect={() => setShowConnectModal(true)}
           onOpenSettings={() => setShowSettings(true)}
         />
-        <Show when={isNip55Session()}>
+        <Show when={isNip55Session() && !isNip55ClipboardAccessGranted()}>
           <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
             <div class="flex items-center justify-between gap-2">
               <p class="text-xs text-amber-900">{t('Clipboard access is required for signing events.')}</p>
@@ -51,9 +52,6 @@ export function AppLayout(props: AppLayoutProps) {
                 {t('Ask for access')}
               </button>
             </div>
-            <Show when={clipboardAccessGranted()}>
-              <p class="mt-1 text-xs text-green-700">{t('Clipboard access granted.')}</p>
-            </Show>
             <Show when={clipboardAccessError()}>
               <p class="mt-1 text-xs text-rose-700">{t('Clipboard access request was denied.')}</p>
             </Show>
