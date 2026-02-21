@@ -2,6 +2,7 @@ import { createEffect, createMemo, createSignal, Show, For } from 'solid-js';
 
 import { t } from '../i18n';
 import { isNip07Available } from '../lib/nostr/Nip07Provider';
+import { logger } from '../utils/logger';
 
 import { NostrConnectAuth } from './NostrConnectAuth';
 
@@ -152,6 +153,7 @@ function ChoiceCard(props: { titleKey: string; descKey: string; onClick: () => v
 }
 
 type ExistingOptionId = (typeof EXISTING_USER_OPTIONS_BASE)[number]['id'];
+const { error: logError } = logger();
 
 export function NostrConnectModal(props: NostrConnectModalProps) {
   const [step, setStep] = createSignal<ConnectStep>('choice');
@@ -360,7 +362,13 @@ export function NostrConnectModal(props: NostrConnectModalProps) {
                   props.onSuccess();
                   props.onClose();
                 }}
-                onError={() => {}}
+                onError={(error) => {
+                  if (!error) {
+                    return;
+                  }
+
+                  logError('[NostrConnectModal] Auth flow error:', error);
+                }}
               />
             </Show>
           </div>

@@ -2,6 +2,7 @@ import { sumProofs } from '@cashu/cashu-ts';
 import type { Proof } from '@cashu/cashu-ts';
 import type { Event, EventTemplate, Filter } from 'nostr-tools';
 
+import { logger } from '../../utils/logger';
 import { pool } from '../../utils/nostr';
 
 /** NIP-60: Cashu wallet event (replaceable). Encrypted privkey + mints. */
@@ -12,6 +13,7 @@ export const NUTZAP_TOKEN_KIND = 7375;
 
 /** NIP-60 / NIP-61: Redemption / spending history (optional). */
 export const NUTZAP_REDEMPTION_KIND = 7376;
+const { error: logError } = logger();
 
 export type Nip60WalletContent = {
   privkey: string;
@@ -180,7 +182,9 @@ export async function decryptTokenContent(
       mint: String(parsed.mint),
       proofs,
     };
-  } catch {
+  } catch (err) {
+    logError('[nip60] Failed to decrypt token content:', err);
+
     return null;
   }
 }

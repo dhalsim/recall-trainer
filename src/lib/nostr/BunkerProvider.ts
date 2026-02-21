@@ -7,6 +7,7 @@
 import { finalizeEvent } from 'nostr-tools';
 import { bytesToHex, hexToBytes } from 'nostr-tools/utils';
 
+import { logger } from '../../utils/logger';
 import { assertUnreachable, createKeyPair, pool } from '../../utils/nostr';
 
 import {
@@ -25,6 +26,7 @@ import type {
 
 export type { BunkerSignerData };
 const DEFAULT_PERMS = 'sign_event,get_public_key';
+const { error: logError } = logger();
 
 export interface ParsedBunkerUrl {
   remoteSignerPubkey: string;
@@ -109,7 +111,9 @@ export function connectBunker(bunkerUrl: string): Promise<BunkerSignerData> {
 
           try {
             parsed = JSON.parse(decrypted);
-          } catch {
+          } catch (err) {
+            logError('[BunkerProvider] Invalid connect response JSON:', err);
+
             return;
           }
 

@@ -6,6 +6,7 @@
 import type { Proof } from '@cashu/cashu-ts';
 
 import { logger } from '../../utils/logger';
+
 import type { Nip60WalletContent } from './nip60';
 
 const CACHE_KEY_PREFIX = 'recall-trainer-wallet-cache-';
@@ -40,7 +41,9 @@ export function readWalletCache(pubkey: string): CachedWallet | null {
     }
 
     return parsed as CachedWallet;
-  } catch {
+  } catch (err) {
+    error('[walletCache] Failed to read:', err);
+
     return null;
   }
 }
@@ -69,7 +72,7 @@ export function proofMapFromCache(cached: CachedWallet): Map<string, Proof[]> {
 export function clearWalletCache(pubkey: string): void {
   try {
     localStorage.removeItem(cacheKey(pubkey));
-  } catch {
-    // ignore
+  } catch (err) {
+    error('[walletCache] Failed to clear:', err);
   }
 }

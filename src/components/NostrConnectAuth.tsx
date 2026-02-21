@@ -158,7 +158,8 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
 
           try {
             responseData = JSON.parse(decrypted);
-          } catch {
+          } catch (error) {
+            logError('[NostrConnectAuth] Invalid connect response JSON:', error);
             props.onError(t('Invalid response format'));
 
             return;
@@ -448,7 +449,8 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
                     } else {
                       props.onError(t('Login failed'));
                     }
-                  } catch {
+                  } catch (error) {
+                    logError('[NostrConnectAuth] Passkey verification failed:', error);
                     props.onError(t('Login failed'));
                   } finally {
                     setPasskeyLoading(false);

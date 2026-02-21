@@ -8,6 +8,7 @@ import { getProfile, prefetchProfiles } from '../../lib/profile/profileCache';
 import { getDisplayName } from '../../lib/profile/profileParse';
 import { readSyncMeta } from '../../lib/syncMeta';
 import { getWotDepths } from '../../lib/wot/wotScore';
+import { logger } from '../../utils/logger';
 import { ProfileAvatar } from '../profile/ProfileAvatar';
 
 import { truncateUrl } from './utils';
@@ -18,6 +19,8 @@ interface MintDetailsProps {
   onAddMint?: (url: string) => void;
 }
 
+const { error: logError } = logger();
+
 function formatReviewDate(created_at: number): string {
   try {
     return new Date(created_at * 1000).toLocaleDateString(undefined, {
@@ -25,7 +28,9 @@ function formatReviewDate(created_at: number): string {
       month: 'short',
       day: 'numeric',
     });
-  } catch {
+  } catch (err) {
+    logError('[MintDetails] Failed to format review date:', err);
+
     return '';
   }
 }

@@ -141,7 +141,9 @@ export function checkNip55Callback(): void {
     }
 
     pending = JSON.parse(raw) as Nip55PendingRequest;
-  } catch {
+  } catch (e) {
+    logError('Failed to parse NIP-55 callback pending request', e);
+
     return;
   }
 
@@ -170,7 +172,9 @@ export function getNip55Result(): Nip55CallbackResult | null {
     }
 
     return JSON.parse(raw) as Nip55CallbackResult;
-  } catch {
+  } catch (e) {
+    logError('Failed to parse NIP-55 callback result', e);
+
     return null;
   }
 }
@@ -178,8 +182,8 @@ export function getNip55Result(): Nip55CallbackResult | null {
 export function clearNip55Result(): void {
   try {
     localStorage.removeItem(NIP55_RESULT_KEY);
-  } catch {
-    // ignore
+  } catch (e) {
+    logError('Failed to clear NIP-55 callback result', e);
   }
 }
 

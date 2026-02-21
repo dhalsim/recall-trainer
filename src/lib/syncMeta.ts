@@ -34,7 +34,9 @@ export function readSyncMeta(pubkey: string): SyncMeta | null {
     }
 
     return parsed as SyncMeta;
-  } catch {
+  } catch (err) {
+    error('[syncMeta] Failed to read:', err);
+
     return null;
   }
 }

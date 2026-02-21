@@ -1,6 +1,7 @@
 import { finalizeEvent, getPublicKey, nip44 } from 'nostr-tools';
 import { decrypt as nip49Decrypt, encrypt as nip49Encrypt } from 'nostr-tools/nip49';
 
+import { logger } from '../../utils/logger';
 import { assertUnreachable } from '../../utils/nostr';
 import { createKeyPair } from '../../utils/nostr';
 
@@ -15,6 +16,7 @@ import type { NostrProvider } from './types';
 export type { PasskeySignerData } from './types';
 
 const PASSKEY_SALT = 'recall-trainer-nostr-key-v1';
+const { error: logError } = logger();
 
 /** Encode 32-byte PRF output to a string usable as NIP-49 password (deterministic). */
 function prfBytesToPassword(prfOutput: ArrayBuffer): string {
@@ -77,7 +79,9 @@ export async function isPasskeySupported(): Promise<boolean> {
 
   try {
     return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-  } catch {
+  } catch (err) {
+    logError('[PasskeySigner] Failed to detect passkey support:', err);
+
     return false;
   }
 }
@@ -243,7 +247,8 @@ export function createPasskeySigner(data: PasskeySignerData): NostrProvider {
         lock();
 
         return pubkey;
-      } catch {
+      } catch (err) {
+        logError('[PasskeySigner] Failed to get public key:', err);
         lock();
 
         return null;

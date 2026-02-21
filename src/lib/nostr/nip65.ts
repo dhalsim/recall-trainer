@@ -1,5 +1,6 @@
 import type { Event, Filter } from 'nostr-tools';
 import { createSignal } from 'solid-js';
+
 import { logger } from '../../utils/logger';
 
 const PROFILE_RELAYS = [
@@ -61,7 +62,9 @@ function readCache(pubkey: string): Nip65StoreData | null {
     }
 
     return { pubkey, relays: parsed.relays, createdAt: parsed.createdAt };
-  } catch {
+  } catch (err) {
+    error('[nip65] Failed to read cache:', err);
+
     return null;
   }
 }

@@ -94,7 +94,9 @@ function readPendingWalletAction(): PendingWalletAction | null {
     }
 
     return JSON.parse(raw) as PendingWalletAction;
-  } catch {
+  } catch (err) {
+    logError('[CashuWallet] Failed to read pending action:', err);
+
     return null;
   }
 }
@@ -110,8 +112,8 @@ function writePendingWalletAction(action: PendingWalletAction): void {
 function clearPendingWalletAction(): void {
   try {
     localStorage.removeItem(PENDING_WALLET_ACTION_KEY);
-  } catch {
-    // ignore
+  } catch (err) {
+    logError('[CashuWallet] Failed to clear pending action:', err);
   }
 }
 
@@ -243,9 +245,12 @@ export function WalletDialog(props: WalletDialogProps) {
         action.pubkey,
         JSON.stringify(walletContentToArray(action.content)),
       );
+
       const template = buildWalletEventTemplate(encrypted);
+
       const reason =
         action.type === 'create_wallet' ? t('Create Cashu wallet') : t('Add mint to wallet');
+
       const { signedEvent } = await auth.signEvent({
         event: template,
         reason,
@@ -277,7 +282,9 @@ export function WalletDialog(props: WalletDialogProps) {
       action.pubkey,
       JSON.stringify({ mint: action.mintUrl, proofs: action.proofs }),
     );
+
     const template = buildTokenEventTemplate(encrypted);
+
     const { signedEvent } = await auth.signEvent({
       event: template,
       reason: t('Publish token event'),

@@ -1,5 +1,6 @@
 import type { Event, Filter } from 'nostr-tools';
 
+import { logger } from '../../utils/logger';
 import { pool } from '../../utils/nostr';
 
 /** NIP-87: Cashu mint announcement (kind 38172). */
@@ -7,6 +8,7 @@ export const NIP87_MINT_KIND = 38172;
 
 /** NIP-87: Ecash mint recommendation (kind 38000). */
 export const NIP87_RECOMMENDATION_KIND = 38000;
+const { error: logError } = logger();
 
 export type Nip87MintInfo = {
   url: string;
@@ -254,7 +256,9 @@ export async function fetchReviewsForUrl(relays: string[], url: string): Promise
     }
 
     return out;
-  } catch {
+  } catch (err) {
+    logError('[nip87] Failed to fetch reviews for URL:', err);
+
     return [];
   }
 }
@@ -288,7 +292,9 @@ export async function fetchMintInfoForUrl(
     }
 
     return null;
-  } catch {
+  } catch (err) {
+    logError('[nip87] Failed to fetch mint info for URL:', err);
+
     return null;
   }
 }
