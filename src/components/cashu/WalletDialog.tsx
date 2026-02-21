@@ -25,6 +25,7 @@ import {
 import type { Nip65Relays } from '../../lib/nostr/nip65';
 import { getRelays } from '../../lib/nostr/nip65';
 import { readSyncMeta, writeSyncMeta } from '../../lib/syncMeta';
+import { logger } from '../../utils/logger';
 import {
   DEFAULT_READ_RELAYS,
   DEFAULT_WRITE_RELAYS,
@@ -61,6 +62,7 @@ type PendingWalletAction =
 
 const PENDING_WALLET_ACTION_KEY = 'cashu_wallet_pending_action';
 const NIP55_NAVIGATION_CODE = 'NIP55_NAVIGATION';
+const { error: logError } = logger();
 
 function getReadRelays(pubkey: string): string[] {
   const nip65 = getRelays(pubkey) as Nip65Relays | undefined;
@@ -101,7 +103,7 @@ function writePendingWalletAction(action: PendingWalletAction): void {
   try {
     localStorage.setItem(PENDING_WALLET_ACTION_KEY, JSON.stringify(action));
   } catch (err) {
-    console.error('[CashuWallet] Failed to persist pending action:', err);
+    logError('[CashuWallet] Failed to persist pending action:', err);
   }
 }
 
@@ -180,7 +182,7 @@ export function WalletDialog(props: WalletDialogProps) {
       writeWalletCache(pubkey, content, byMint);
       writeSyncMeta(pubkey, 'wallet', Math.floor(Date.now() / 1000));
     } catch (err) {
-      console.error('[CashuWallet] Background sync failed:', err);
+      logError('[CashuWallet] Background sync failed:', err);
 
       if (walletState() !== 'loaded') {
         setWalletState('error');
@@ -317,7 +319,7 @@ export function WalletDialog(props: WalletDialogProps) {
         return;
       }
     } catch (err) {
-      console.error('[CashuWallet] Failed to resume pending action:', err);
+      logError('[CashuWallet] Failed to resume pending action:', err);
       setErrorMessage(t('Failed to create wallet.'));
       clearPendingWalletAction();
     }
@@ -352,7 +354,7 @@ export function WalletDialog(props: WalletDialogProps) {
         return;
       }
     } catch (err) {
-      console.error('[CashuWallet] Create failed:', err);
+      logError('[CashuWallet] Create failed:', err);
       setErrorMessage(t('Failed to create wallet.'));
     } finally {
       setCreating(false);
@@ -401,7 +403,7 @@ export function WalletDialog(props: WalletDialogProps) {
           return;
         }
       } catch (err) {
-        console.error('[CashuWallet] Add mint publish failed:', err);
+        logError('[CashuWallet] Add mint publish failed:', err);
         setErrorMessage(t('Failed to create wallet.'));
       }
     })();
@@ -488,7 +490,7 @@ export function WalletDialog(props: WalletDialogProps) {
         writeSyncMeta(pubkey, 'discoverMints', Math.floor(Date.now() / 1000));
       })
       .catch((err) => {
-        console.error('[CashuWallet] Discover mints failed:', err);
+        logError('[CashuWallet] Discover mints failed:', err);
         setDiscoverStore('error', t('No mints found.'));
       })
       .finally(() => {
@@ -509,7 +511,7 @@ export function WalletDialog(props: WalletDialogProps) {
         return runDiscoverBackgroundSync(false);
       })
       .catch((err) => {
-        console.error('[CashuWallet] Discover load failed:', err);
+        logError('[CashuWallet] Discover load failed:', err);
         setDiscoverStore('error', t('No mints found.'));
         setDiscoverStore('loading', false);
         setDiscoverStore('syncing', false);
@@ -563,7 +565,7 @@ export function WalletDialog(props: WalletDialogProps) {
 
       closeMintPanel();
     } catch (err) {
-      console.error('[CashuWallet] Receive failed:', err);
+      logError('[CashuWallet] Receive failed:', err);
       setErrorMessage(err instanceof Error ? err.message : t('Failed to receive token.'));
     } finally {
       setLoadingOp(false);
@@ -633,7 +635,7 @@ export function WalletDialog(props: WalletDialogProps) {
         return;
       }
     } catch (err) {
-      console.error('[CashuWallet] Send failed:', err);
+      logError('[CashuWallet] Send failed:', err);
       setErrorMessage(err instanceof Error ? err.message : t('Failed to send.'));
     } finally {
       setLoadingOp(false);

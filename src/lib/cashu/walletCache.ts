@@ -5,9 +5,11 @@
 
 import type { Proof } from '@cashu/cashu-ts';
 
+import { logger } from '../../utils/logger';
 import type { Nip60WalletContent } from './nip60';
 
 const CACHE_KEY_PREFIX = 'recall-trainer-wallet-cache-';
+const { error } = logger();
 
 type CachedWallet = {
   walletContent: Nip60WalletContent;
@@ -56,7 +58,7 @@ export function writeWalletCache(
 
     localStorage.setItem(cacheKey(pubkey), JSON.stringify(serializable));
   } catch (err) {
-    console.error('[walletCache] Failed to write:', err);
+    error('[walletCache] Failed to write:', err);
   }
 }
 

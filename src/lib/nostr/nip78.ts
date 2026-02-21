@@ -4,6 +4,7 @@ import { createSignal } from 'solid-js';
 import { t } from '../../i18n';
 import type { AppState, SyncPayload } from '../../store';
 import { store } from '../../store';
+import { logger } from '../../utils/logger';
 import { pool } from '../../utils/nostr';
 import { readSyncMeta, writeSyncMeta } from '../syncMeta';
 
@@ -11,6 +12,7 @@ import type { GetPublicKey, SignEvent } from './types';
 
 /** NIP-78 sync data d-tag for this app. */
 export const NIP78_D_TAG = 'recall-trainer-sync-data';
+const { error: logError, log } = logger();
 
 // --- Sync payload (whitelist) ---
 
@@ -100,7 +102,7 @@ function logCloseReasons(reasons: string[]): void {
   const nonNormal = reasons.filter((r) => !normalReasons.includes(r));
 
   if (nonNormal.length > 0) {
-    console.log('[nip78] Subscription closed:', nonNormal);
+    log(`[nip78] Subscription closed: ${nonNormal.join(', ')}`);
   }
 }
 
@@ -174,7 +176,7 @@ export function pullSyncData(pubkey: string): void {
     store.applySyncPayload(payload);
     updateLastSyncedAt(evt.created_at, pubkey);
   } catch (err) {
-    console.error('[nip78] Failed to apply relay payload:', err);
+    logError('[nip78] Failed to apply relay payload:', err);
   } finally {
     setSyncingDirection(null);
   }
@@ -248,7 +250,7 @@ export async function pushSyncData(params: PushSyncParams): Promise<void> {
       onError(t('Sync data publish failed.'));
     }
   } catch (error) {
-    console.error('[nip78] Failed to sign or publish sync event:', error);
+    logError('[nip78] Failed to sign or publish sync event:', error);
     onError(t('Could not sign sync data.'));
   } finally {
     setSyncingDirection(null);

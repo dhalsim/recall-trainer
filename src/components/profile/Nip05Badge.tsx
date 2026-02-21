@@ -1,8 +1,10 @@
 import { createResource, Show } from 'solid-js';
 
 import { t } from '../../i18n';
+import { logger } from '../../utils/logger';
 
 const VERIFY_CACHE = new Map<string, boolean | null>();
+const { error } = logger();
 
 interface Nip05BadgeProps {
   nip05: string;
@@ -51,7 +53,7 @@ function verifyNip05(nip05: string, pubkey: string): Promise<boolean | null> {
 
       return verified;
     } catch (err) {
-      console.error('[Nip05Badge] Verification failed:', err);
+      error('[Nip05Badge] Verification failed:', err);
       VERIFY_CACHE.set(cacheKey, null);
 
       return null;

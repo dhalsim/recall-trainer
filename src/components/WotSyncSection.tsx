@@ -5,7 +5,9 @@ import { readSyncMeta } from '../lib/syncMeta';
 import type { WotStats } from '../lib/wot/wotCache';
 import { crawlFollowGraph } from '../lib/wot/wotCrawl';
 import { getWotStats } from '../lib/wot/wotScore';
+import { logger } from '../utils/logger';
 import { formatRelativeTime } from '../utils/relativeTime';
+const { error } = logger();
 
 interface WotSyncSectionProps {
   rootPubkey: string;
@@ -38,7 +40,7 @@ export function WotSyncSection(props: WotSyncSectionProps) {
 
       await getWotStats(props.rootPubkey).then(setStats);
     } catch (err) {
-      console.error('[WotSyncSection] Crawl failed:', err);
+      error('[WotSyncSection] Crawl failed:', err);
     } finally {
       setCrawling(false);
       setProgress(null);

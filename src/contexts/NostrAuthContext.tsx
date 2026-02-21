@@ -32,9 +32,11 @@ import type {
 } from '../lib/nostr/types';
 import { store } from '../store';
 import { delay } from '../utils/delay';
+import { logger } from '../utils/logger';
 import { assertUnreachable, DEFAULT_READ_RELAYS, pool } from '../utils/nostr';
 
 export type { BunkerSignerData, NostrConnectData, LoginResult, NostrProvider };
+const { error: logError } = logger();
 
 interface NostrAuthContextValue {
   provider: NostrProvider | null;
@@ -262,7 +264,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
       return { success: true, provider: p };
     } catch (error) {
-      console.error('Bunker login failed:', error);
+      logError('Bunker login failed:', error);
       store.clearAuthLoginState();
       setProvider(null);
 
@@ -284,7 +286,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
       return { success: true, provider: p };
     } catch (error) {
-      console.error('Nostr Connect login failed:', error);
+      logError('Nostr Connect login failed:', error);
       store.clearAuthLoginState();
       setProvider(null);
 
@@ -310,7 +312,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
       return { success: true, provider: p };
     } catch (error) {
-      console.error('NIP-07 login failed:', error);
+      logError('NIP-07 login failed:', error);
       store.clearAuthLoginState();
       setProvider(null);
 
@@ -332,7 +334,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
       return { success: true, provider: p };
     } catch (error) {
-      console.error('NIP-55 login failed:', error);
+      logError('NIP-55 login failed:', error);
       store.clearAuthLoginState();
       setProvider(null);
 
@@ -354,7 +356,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
       return { success: true, provider: p };
     } catch (error) {
-      console.error('Passkey signer login failed:', error);
+      logError('Passkey signer login failed:', error);
       store.clearAuthLoginState();
       setProvider(null);
 
@@ -381,7 +383,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
       return { success: true, provider: p };
     } catch (error) {
-      console.error('Password signer login failed:', error);
+      logError('Password signer login failed:', error);
       store.clearAuthLoginState();
       setProvider(null);
 
@@ -417,7 +419,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     try {
       return await p.getPublicKey(params);
     } catch (error) {
-      console.error('Failed to get public key from provider:', error);
+      logError('Failed to get public key from provider:', error);
 
       return null;
     }

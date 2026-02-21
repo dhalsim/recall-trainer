@@ -1,6 +1,7 @@
 import type { JSX } from 'solid-js';
 import { createSignal } from 'solid-js';
 
+import { AppLogs } from './AppLogs';
 import { AppHeader } from './AppHeader';
 import { NostrConnectModal } from './NostrConnectModal';
 import { SettingsDialog } from './SettingsDialog';
@@ -16,6 +17,7 @@ interface AppLayoutProps {
 export function AppLayout(props: AppLayoutProps) {
   const [showSettings, setShowSettings] = createSignal(false);
   const [showConnectModal, setShowConnectModal] = createSignal(false);
+  const [showAppLogs, setShowAppLogs] = createSignal(false);
 
   return (
     <div class="flex min-h-screen min-h-[100dvh] flex-col bg-slate-50 px-4 py-6 sm:px-6 sm:py-8">
@@ -37,7 +39,15 @@ export function AppLayout(props: AppLayoutProps) {
           v {__APP_VERSION__}
         </footer>
       </div>
-      <SettingsDialog open={showSettings()} onClose={() => setShowSettings(false)} />
+      <SettingsDialog
+        open={showSettings()}
+        onClose={() => setShowSettings(false)}
+        onCheckLogs={() => {
+          setShowSettings(false);
+          setShowAppLogs(true);
+        }}
+      />
+      <AppLogs open={showAppLogs()} onClose={() => setShowAppLogs(false)} />
       <NostrConnectModal
         open={showConnectModal}
         onClose={() => setShowConnectModal(false)}

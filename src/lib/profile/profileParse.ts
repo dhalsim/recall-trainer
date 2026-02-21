@@ -1,4 +1,6 @@
 import type { Nip65Relays } from '../nostr/nip65';
+import { logger } from '../../utils/logger';
+const { error } = logger();
 
 export type StoredProfile = {
   pubkey: string;
@@ -52,7 +54,7 @@ export function parseProfileContent(json: string): Partial<StoredProfile> {
 
     return result;
   } catch (err) {
-    console.error('[profileParse] Failed to parse profile content:', err);
+    error('[profileParse] Failed to parse profile content:', err);
 
     return {};
   }

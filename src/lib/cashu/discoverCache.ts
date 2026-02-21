@@ -5,6 +5,7 @@
 
 import type { GetInfoResponse } from '@cashu/cashu-ts';
 import type { Event } from 'nostr-tools';
+import { logger } from '../../utils/logger';
 
 import { getMintInfo } from './mintInfo';
 import {
@@ -20,6 +21,7 @@ const DB_VERSION = 1;
 const MINT_EVENTS_STORE = 'mint_events';
 const REVIEW_EVENTS_STORE = 'review_events';
 const MINT_INFO_STORE = 'mint_info';
+const { error } = logger();
 
 export type DiscoverMintData = {
   url: string;
@@ -264,7 +266,7 @@ export async function backgroundSync(
         if (result.ok) {
           openDB()
             .then((d) => setMintInfo(d, url, result.info).finally(() => d.close()))
-            .catch((e) => console.error('discoverCache setMintInfo', url, e));
+            .catch((e) => error(`discoverCache setMintInfo ${url}`, e));
 
           onMintInfo?.(url, result.info);
         } else {

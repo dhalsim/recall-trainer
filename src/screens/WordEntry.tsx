@@ -6,6 +6,8 @@ import { LANGUAGE_LABELS } from '../lib/language-pairs';
 import type { AppLanguage, VocabEntry } from '../store';
 import { store } from '../store';
 import { daysFromTodayTo } from '../utils/date';
+import { logger } from '../utils/logger';
+const { error: logError } = logger();
 
 export function WordEntry() {
   const [source, setSource] = createSignal('');
@@ -59,7 +61,7 @@ export function WordEntry() {
         store.addEntry(s, tgt);
       }
     } catch (err) {
-      console.error('[WordEntry] save entry failed:', err);
+      logError('[WordEntry] save entry failed:', err);
 
       return false;
     }
@@ -280,7 +282,7 @@ export function WordEntry() {
       setExportFeedback(t('Copied to clipboard'));
       setTimeout(() => setExportFeedback(null), 1000);
     } catch (err) {
-      console.error('[WordEntry] clipboard write failed:', err);
+      logError('[WordEntry] clipboard write failed:', err);
       setExportFeedback(t('Copy failed'));
       setTimeout(() => setExportFeedback(null), 2000);
     }

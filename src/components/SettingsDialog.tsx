@@ -15,6 +15,7 @@ import { assertUnreachable } from '../utils/nostr';
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
+  onCheckLogs: () => void;
 }
 
 function getProviderLabel(method: NostrProviderMethod): string {
@@ -140,6 +141,27 @@ export function SettingsDialog(props: SettingsDialogProps) {
                 {QUESTIONS_PER_SESSION_MIN}–{QUESTIONS_PER_SESSION_MAX} (default{' '}
                 {QUESTIONS_PER_SESSION_DEFAULT})
               </p>
+            </div>
+            <div class="border-t border-slate-200 pt-4">
+              <p class="text-sm font-medium text-slate-700">{t('Logs')}</p>
+              <div class="mt-2 flex items-center gap-3">
+                <label class="inline-flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={store.state().logWithSignal}
+                    onInput={(e) => store.setLogWithSignal(e.currentTarget.checked)}
+                    class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span class="text-sm text-slate-700">{t('Log with signal')}</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => props.onCheckLogs()}
+                  class="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  {t('Check Logs')}
+                </button>
+              </div>
             </div>
             <div class="border-t border-slate-200 pt-4">
               <p class="text-sm font-medium text-slate-700">{t('Simulation mode')}</p>

@@ -1,11 +1,13 @@
 import type { Event } from 'nostr-tools';
 import { createSignal } from 'solid-js';
 
+import { logger } from '../../utils/logger';
 import { pool, PROFILE_RELAYS, queryChunkedParallel } from '../../utils/nostr';
 import { toReadWriteRelays } from '../nostr/nip65';
 
 import type { StoredProfile } from './profileParse';
 import { parseProfileContent } from './profileParse';
+const { error } = logger();
 
 // ---------------------------------------------------------------------------
 // IDB
@@ -252,7 +254,7 @@ async function flushQueue(): Promise<void> {
         db.close();
       }
     } catch (err) {
-      console.error('[profileCache] flushQueue IDB error:', err);
+      error('[profileCache] flushQueue IDB error:', err);
       toFetch = [...toFetch, ...notInCache];
     }
   }
@@ -275,7 +277,7 @@ async function flushQueue(): Promise<void> {
 
     db.close();
   } catch (err) {
-    console.error('[profileCache] flushQueue fetch error:', err);
+    error('[profileCache] flushQueue fetch error:', err);
   }
 }
 

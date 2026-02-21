@@ -16,6 +16,7 @@ import {
 import { createPasskeyCredentials, isPasskeySupported } from '../lib/nostr/PasskeySignerProvider';
 import { createPasswordProtectedKeypair } from '../lib/nostr/PasswordSignerProvider';
 import { store } from '../store';
+import { logger } from '../utils/logger';
 import { DEFAULT_WRITE_RELAYS, pool } from '../utils/nostr';
 
 import type { ConnectStep } from './NostrConnectModal';
@@ -28,6 +29,7 @@ interface NostrConnectAuthProps {
   }) => void;
   onError: (error: string) => void;
 }
+const { error: logError } = logger();
 
 function isAndroid(): boolean {
   if (typeof navigator === 'undefined') {
@@ -118,7 +120,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
 
       setQrSvg(svg);
     } catch (error) {
-      console.error('Failed to generate QR code:', error);
+      logError('Failed to generate QR code:', error);
       props.onError(t('Login failed'));
     } finally {
       setIsQrLoading(false);
@@ -282,7 +284,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
       setShowCopied(true);
       setTimeout(() => setShowCopied(false), 2000);
     } catch (error) {
-      console.error('Failed to copy URI:', error);
+      logError('Failed to copy URI:', error);
       props.onError(t('Login failed'));
     }
   }
@@ -318,7 +320,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
         props.onError(t('Login failed'));
       }
     } catch (error) {
-      console.error('Passkey setup failed:', error);
+      logError('Passkey setup failed:', error);
 
       props.onError(error instanceof Error ? error.message : t('Login failed'));
     } finally {
@@ -357,7 +359,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
         props.onError(t('Login failed'));
       }
     } catch (error) {
-      console.error('Password create failed:', error);
+      logError('Password create failed:', error);
       props.onError(error instanceof Error ? error.message : t('Login failed'));
     } finally {
       setPasswordCreateLoading(false);
@@ -387,7 +389,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
         props.onError(t('Login failed'));
       }
     } catch (error) {
-      console.error('Password login failed:', error);
+      logError('Password login failed:', error);
       props.onError(error instanceof Error ? error.message : t('Login failed'));
     } finally {
       setPasswordLoginLoading(false);
@@ -580,7 +582,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
                       props.onError(t('Login failed'));
                     }
                   } catch (error) {
-                    console.error('NIP-07 login failed:', error);
+                    logError('NIP-07 login failed:', error);
                     props.onError(error instanceof Error ? error.message : t('Login failed'));
                   }
                 }}
@@ -630,7 +632,7 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
                     props.onError(t('Login failed'));
                   }
                 } catch (error) {
-                  console.error('Bunker login failed:', error);
+                  logError('Bunker login failed:', error);
                   props.onError(error instanceof Error ? error.message : t('Login failed'));
                 } finally {
                   setBunkerLoading(false);

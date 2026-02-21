@@ -2,12 +2,14 @@
  * Generalized sync metadata per user.
  * Single localStorage key per pubkey; value is an object with typed sync ids and timestamps (seconds).
  */
+import { logger } from '../utils/logger';
 
 export type SyncMetaId = 'nip78' | 'discoverMints' | 'wot' | 'wallet';
 
 export type SyncMeta = Partial<Record<SyncMetaId, number>>;
 
 const SYNC_META_KEY_PREFIX = 'recall-trainer-sync-meta-';
+const { error } = logger();
 
 function getSyncMetaKey(pubkey: string): string {
   return `${SYNC_META_KEY_PREFIX}${pubkey}`;
@@ -48,6 +50,6 @@ export function writeSyncMeta(pubkey: string, syncId: SyncMetaId, timeSeconds: n
     const next: SyncMeta = { ...current, [syncId]: timeSeconds };
     localStorage.setItem(key, JSON.stringify(next));
   } catch (err) {
-    console.error('[syncMeta] Failed to write:', err);
+    error('[syncMeta] Failed to write:', err);
   }
 }

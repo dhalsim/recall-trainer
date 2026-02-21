@@ -1,5 +1,6 @@
 import type { Event, Filter } from 'nostr-tools';
 import { createSignal } from 'solid-js';
+import { logger } from '../../utils/logger';
 
 const PROFILE_RELAYS = [
   'wss://purplepag.es',
@@ -9,6 +10,7 @@ const PROFILE_RELAYS = [
 ];
 
 const CACHE_KEY_PREFIX = 'nip65-relays-';
+const { error, log } = logger();
 
 export type Nip65Relays = {
   readRelays: string[];
@@ -75,7 +77,7 @@ function writeCache(pubkey: string, data: Nip65StoreData | null): void {
       localStorage.removeItem(getCacheKey(pubkey));
     }
   } catch (err) {
-    console.error('[nip65] Failed to write cache:', err);
+    error('[nip65] Failed to write cache:', err);
   }
 }
 
@@ -179,7 +181,7 @@ export function subscribeRelays(pool: Nip65Pool, pubkey: string): () => void {
         );
 
         if (nonNormal.length > 0) {
-          console.log('[nip65] Subscription closed:', nonNormal);
+          log(`[nip65] Subscription closed: ${nonNormal.join(', ')}`);
         }
       },
     },

@@ -1,5 +1,6 @@
 import type { EventTemplate, NostrEvent } from 'nostr-tools';
 
+import { logger } from '../../utils/logger';
 import { assertUnreachable } from '../../utils/nostr';
 
 import type {
@@ -15,6 +16,7 @@ export type { Nip55SignerData } from './types';
 const NIP55_PENDING_KEY = 'nip55_pending_request';
 const NIP55_RESULT_KEY = 'nip55_result';
 const NIP55_NAVIGATION_ERROR_CODE = 'NIP55_NAVIGATION';
+const { error: logError } = logger();
 
 /** Base URL for NIP-55 callback (signer redirects here with ?event= result). */
 export function getNip55CallbackBaseUrl(): string {
@@ -103,7 +105,7 @@ export function saveNip55PendingRequest(
   try {
     localStorage.setItem(NIP55_PENDING_KEY, JSON.stringify(request));
   } catch (e) {
-    console.error('Failed to save NIP-55 pending request', e);
+    logError('Failed to save NIP-55 pending request', e);
   }
 }
 
@@ -196,7 +198,7 @@ export function parseNip55SignEventResult(result: string): NostrEvent {
       return parsed as NostrEvent;
     }
   } catch (e) {
-    console.error('Failed to parse NIP-55 sign_event result', e);
+    logError('Failed to parse NIP-55 sign_event result', e);
   }
 
   throw new Error('Invalid signed event from NIP-55 signer');

@@ -1,5 +1,6 @@
 import type { EventTemplate, NostrEvent } from 'nostr-tools';
 
+import { logger } from '../../utils/logger';
 import { assertUnreachable } from '../../utils/nostr';
 
 import type {
@@ -21,6 +22,7 @@ export type Nip07Relays = {
   readRelays: string[];
   writeRelays: string[];
 };
+const { error: logError } = logger();
 
 export function toReadWriteRelays(relaysEntries: RelaysEntries): Nip07Relays {
   const readRelays: string[] = [];
@@ -82,7 +84,7 @@ export class Nip07Provider implements NostrProvider {
     try {
       return await window.nostr.getPublicKey();
     } catch (error) {
-      console.error('Failed to get public key from NIP-07:', error);
+      logError('Failed to get public key from NIP-07:', error);
 
       throw new Error('Failed to get public key from extension');
     }
@@ -98,7 +100,7 @@ export class Nip07Provider implements NostrProvider {
 
       return { signedEvent: event, provider: this };
     } catch (error) {
-      console.error('Failed to sign event with NIP-07:', error);
+      logError('Failed to sign event with NIP-07:', error);
 
       throw new Error('Failed to sign event with extension');
     }
@@ -118,7 +120,7 @@ export class Nip07Provider implements NostrProvider {
 
       return toReadWriteRelays(relays);
     } catch (error) {
-      console.error('Failed to get relays from NIP-07:', error);
+      logError('Failed to get relays from NIP-07:', error);
 
       throw new Error('Failed to get relays from extension');
     }

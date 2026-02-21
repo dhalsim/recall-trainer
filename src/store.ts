@@ -4,8 +4,10 @@ import { setLocale } from './i18n';
 import type { AuthLoginState } from './lib/nostr/types';
 import { setSimulationTime } from './utils/clock';
 import { addDaysFromToday, endOfToday, realStartOfToday, startOfToday } from './utils/date';
+import { logger, setLogSignalEnabled } from './utils/logger';
 
 export const SETTINGS_VERSION = 4;
+const { error: logError } = logger();
 
 /** Generate a unique ID. Falls back to Math.random when crypto.randomUUID is unavailable (non-secure context). */
 function generateId(): string {
@@ -174,6 +176,8 @@ export interface AppState {
   simulationDate: number | null;
   /** Nostr auth state (optional). Persisted; restored on load. */
   authLoginState: AuthLoginState | null;
+  /** If true, app logs are also mirrored to an in-memory signal buffer. */
+  logWithSignal: boolean;
 }
 
 /** NIP-78 sync payload: whitelisted keys only. Used when pulling from relays. */
@@ -199,6 +203,7 @@ const defaultState: AppState = {
   simulationMode: false,
   simulationDate: null,
   authLoginState: null,
+  logWithSignal: false,
 };
 
 function toSourceOrTarget(
@@ -313,6 +318,7 @@ function migrateV3ToV4(parsed: AppStateV3): AppState {
     simulationMode: false,
     simulationDate: null,
     authLoginState: null,
+    logWithSignal: false,
   };
 }
 
@@ -418,7 +424,7 @@ function loadState(): AppState {
 
     return state;
   } catch (err) {
-    console.error('[store] Failed to load state:', err);
+    logError('[store] Failed to load state:', err);
     setSimulationTime(null);
 
     return { ...defaultState };
@@ -429,12 +435,13 @@ function saveState(state: AppState): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (err) {
-    console.error('[store] Failed to save state:', err);
+    logError('[store] Failed to save state:', err);
   }
 }
 
 function createStore() {
   const initialState = loadState();
+  setLogSignalEnabled(initialState.logWithSignal);
   const [state, setState] = createSignal<AppState>(initialState);
   const [testSession, setTestSession] = createSignal<TestSessionSnapshot | null>(null);
 
@@ -650,6 +657,11 @@ function createStore() {
     persist((prev) => ({ ...prev, authLoginState: null }));
   };
 
+  const setLogWithSignal = (enabled: boolean): void => {
+    setLogSignalEnabled(enabled);
+    persist((prev) => ({ ...prev, logWithSignal: enabled }));
+  };
+
   /** Apply NIP-78 sync payload from relays (pull). Merges payload into state and persists. */
   const applySyncPayload = (payload: SyncPayload): void => {
     const now = startOfToday();
@@ -717,6 +729,7 @@ function createStore() {
     advanceSimulationDay,
     setAuthLoginState,
     clearAuthLoginState,
+    setLogWithSignal,
     applySyncPayload,
   };
 }

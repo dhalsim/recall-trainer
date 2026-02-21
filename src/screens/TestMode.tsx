@@ -10,6 +10,8 @@ import {
   MAX_SESSION_ROUNDS,
   store,
 } from '../store';
+import { logger } from '../utils/logger';
+const { log } = logger();
 
 type Direction = 'source_to_target' | 'target_to_source';
 type Phase = 'idle' | 'question' | 'answer_feedback' | 'round_summary' | 'finished';
@@ -112,9 +114,9 @@ export function TestMode() {
     const snapshot = store.testSession();
 
     if (snapshot != null) {
-      console.log('onMount snapshot', snapshot.phase);
+      log(`onMount snapshot ${snapshot.phase}`);
       restoreSession(snapshot);
-      console.log('onMount snapshot restored', snapshot.phase);
+      log(`onMount snapshot restored ${snapshot.phase}`);
     }
   });
 

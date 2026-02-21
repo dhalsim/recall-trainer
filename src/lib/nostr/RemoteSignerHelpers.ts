@@ -6,7 +6,9 @@
 import type { EventTemplate } from 'nostr-tools';
 import { finalizeEvent, nip04, nip44 } from 'nostr-tools';
 
+import { logger } from '../../utils/logger';
 import { generateRandomHexString, pool } from '../../utils/nostr';
+const { error: logError } = logger();
 
 /** NIP-46 request/response event kind. */
 export const NIP46_KIND = 24133;
@@ -62,7 +64,7 @@ export function decryptContent(
 
     return nip44.decrypt(content, conversationKey);
   } catch (error) {
-    console.error('[RemoteSigner] Failed to decrypt content:', error);
+    logError('[RemoteSigner] Failed to decrypt content:', error);
 
     return null;
   }
