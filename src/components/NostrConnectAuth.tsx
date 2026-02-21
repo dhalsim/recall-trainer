@@ -12,7 +12,7 @@ import {
   isNip55ClipboardAccessGranted,
 } from '../lib/nostr/nip55ClipboardFlow';
 import { isNip07Available } from '../lib/nostr/Nip07Provider';
-import { startNip55GetPublicKeyFlow } from '../lib/nostr/Nip55Provider';
+import { createNip55Provider, startNip55GetPublicKeyFlow } from '../lib/nostr/Nip55Provider';
 import {
   decryptContent,
   generateNostrConnectUri,
@@ -443,7 +443,8 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   });
 
   createEffect(() => {
-    const method = authState()?.method;
+    const authLogin = authState();
+    const method = authLogin?.method;
 
     if (!nip55Waiting() || method !== 'nip55') {
       return;
@@ -458,6 +459,20 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
       clearTimeout(timeoutId);
       setNip55TimeoutId(null);
     }
+
+    if (auth.provider) {
+      props.onSuccess({ success: true, provider: auth.provider });
+
+      return;
+    }
+
+    if (authLogin?.data && 'pubkey' in authLogin.data && typeof authLogin.data.pubkey === 'string') {
+      props.onSuccess({ success: true, provider: createNip55Provider({ pubkey: authLogin.data.pubkey }) });
+
+      return;
+    }
+
+    log('[NostrConnectAuth] NIP-55 login detected but provider was unavailable for modal success.');
   });
 
   async function handleSetUpPasskey() {
