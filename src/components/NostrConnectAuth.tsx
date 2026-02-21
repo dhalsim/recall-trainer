@@ -859,32 +859,34 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
                   {t('NIP-55 login timed out. Return from signer and try again.')}
                 </p>
               </Show>
-              <div class="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div class="flex items-center justify-between gap-2">
-                  <p class="text-xs text-slate-600">
-                    {t('If clipboard auto-detect fails, paste signer result manually.')}
-                  </p>
+              <Show when={!isNip55ClipboardAccessGranted()}>
+                <div class="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="text-xs text-slate-600">
+                      {t('If clipboard auto-detect fails, paste signer result manually.')}
+                    </p>
+                  </div>
+                  <textarea
+                    value={nip55ManualResult()}
+                    onInput={(e) => setNip55ManualResult(e.currentTarget.value)}
+                    rows={2}
+                    placeholder={t('Paste pubkey or npub from Amber')}
+                    class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <div class="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={nip55ManualLoading() || nip55ManualResult().trim().length === 0}
+                      onClick={() => void submitManualNip55Result()}
+                      class="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:opacity-50"
+                    >
+                      <Show when={nip55ManualLoading()} fallback={t('Use pasted result')}>
+                        {t('Connecting…')}
+                      </Show>
+                    </button>
+                  </div>
                 </div>
-                <textarea
-                  value={nip55ManualResult()}
-                  onInput={(e) => setNip55ManualResult(e.currentTarget.value)}
-                  rows={2}
-                  placeholder={t('Paste pubkey or npub from Amber')}
-                  class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <div class="flex gap-2">
-                  <button
-                    type="button"
-                    disabled={nip55ManualLoading() || nip55ManualResult().trim().length === 0}
-                    onClick={() => void submitManualNip55Result()}
-                    class="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:opacity-50"
-                  >
-                    <Show when={nip55ManualLoading()} fallback={t('Use pasted result')}>
-                      {t('Connecting…')}
-                    </Show>
-                  </button>
-                </div>
-              </div>
+              </Show>
             </Show>
           </div>
         </Show>

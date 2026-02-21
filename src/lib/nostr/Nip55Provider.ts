@@ -153,11 +153,11 @@ export function getNip55Result(): Nip55CallbackResult | null {
     }
 
     const parsed = JSON.parse(raw) as Nip55CallbackResult;
-    log(`[NIP-55] Callback result loaded. type=${parsed.type}, requestId=${parsed.requestId}`);
+    log(`[NIP-55] Result loaded. type=${parsed.type}, requestId=${parsed.requestId}`);
 
     return parsed;
   } catch (e) {
-    logError('Failed to parse NIP-55 callback result', e);
+    logError('Failed to parse NIP-55 result', e);
 
     return null;
   }
@@ -166,9 +166,9 @@ export function getNip55Result(): Nip55CallbackResult | null {
 export function clearNip55Result(): void {
   try {
     localStorage.removeItem(NIP55_RESULT_KEY);
-    log('[NIP-55] Callback result cleared.');
+    log('[NIP-55] Result cleared.');
   } catch (e) {
-    logError('Failed to clear NIP-55 callback result', e);
+    logError('Failed to clear NIP-55 result', e);
   }
 }
 
@@ -196,7 +196,7 @@ export function parseNip55SignEventResult(result: string): NostrEvent {
       typeof (parsed as NostrEvent).pubkey === 'string' &&
       typeof (parsed as NostrEvent).sig === 'string'
     ) {
-      log('[NIP-55] sign_event callback parsed successfully.');
+      log('[NIP-55] sign_event result parsed successfully.');
 
       return parsed as NostrEvent;
     }
@@ -215,7 +215,7 @@ export function parseNip55Nip44Result(result: string): string {
     throw new Error('Invalid NIP-55 NIP-44 result');
   }
 
-  log('[NIP-55] nip44 callback parsed successfully.');
+  log('[NIP-55] nip44 result parsed successfully.');
 
   return trimmed;
 }

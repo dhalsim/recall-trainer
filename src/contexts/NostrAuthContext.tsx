@@ -174,14 +174,14 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
     if (nip55Result) {
       if (lastConsumedNip55RequestId() === nip55Result.requestId) {
-        log(`[NostrAuth] Duplicate NIP-55 callback ignored. requestId=${nip55Result.requestId}`);
+        log(`[NostrAuth] Duplicate NIP-55 result ignored. requestId=${nip55Result.requestId}`);
         clearNip55Result();
 
         return;
       }
 
       setLastConsumedNip55RequestId(nip55Result.requestId);
-      log(`[NostrAuth] Consuming NIP-55 callback result. type=${nip55Result.type}`);
+      log(`[NostrAuth] Consuming NIP-55 result. type=${nip55Result.type}`);
 
       if (nip55Result.type === 'get_public_key') {
         store.setAuthLoginState({
@@ -191,7 +191,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
         });
 
         setProvider(createNip55Provider({ pubkey: nip55Result.result }));
-        log('[NostrAuth] NIP-55 login restored from get_public_key callback.');
+        log('[NostrAuth] NIP-55 login restored from get_public_key result.');
         clearNip55Result();
       } else if (nip55Result.type === 'sign_event') {
         const auth = store.state().authLoginState;
