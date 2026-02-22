@@ -502,7 +502,11 @@ export function WalletDialog(props: WalletDialogProps) {
       }
 
       try {
-        const completed = await runWalletAction({ type: 'remove_mint', pubkey: pk, content: updated });
+        const completed = await runWalletAction({
+          type: 'remove_mint',
+          pubkey: pk,
+          content: updated,
+        });
 
         if (!completed) {
           return;

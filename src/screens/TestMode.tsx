@@ -2,7 +2,7 @@ import { useNavigate } from '@solidjs/router';
 import { createEffect, createSignal, For, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
 
 import { t } from '../i18n';
-import type { AppLanguage, TestSessionSnapshot, VocabEntry } from '../store';
+import type { AppLanguage, StudyEntry, TestSessionSnapshot } from '../store';
 import {
   getEntriesWithDueSide,
   isSourceDue,
@@ -22,16 +22,16 @@ function normalizeForCompare(text: string, locale: AppLanguage | null): string {
 }
 
 interface RoundResult {
-  entry: VocabEntry;
+  entry: StudyEntry;
   correct: boolean;
   userAnswer: string;
 }
 
 export function TestMode() {
-  const [sourceToTarget, setSourceToTarget] = createSignal<VocabEntry[]>([]);
-  const [targetToSource, setTargetToSource] = createSignal<VocabEntry[]>([]);
+  const [sourceToTarget, setSourceToTarget] = createSignal<StudyEntry[]>([]);
+  const [targetToSource, setTargetToSource] = createSignal<StudyEntry[]>([]);
   const [direction, setDirection] = createSignal<Direction>('source_to_target');
-  const [currentRoundQuestions, setCurrentRoundQuestions] = createSignal<VocabEntry[]>([]);
+  const [currentRoundQuestions, setCurrentRoundQuestions] = createSignal<StudyEntry[]>([]);
   const [currentIndex, setCurrentIndex] = createSignal(0);
   const [roundResults, setRoundResults] = createSignal<RoundResult[]>([]);
   const [totalCorrect, setTotalCorrect] = createSignal(0);
@@ -46,7 +46,7 @@ export function TestMode() {
   let answerInputRef: HTMLInputElement | undefined;
 
   const entries = () => store.state().entries;
-  const questionsPerSession = () => store.state().questionsPerSession;
+  const numberOfItems = () => store.state().numberOfItems;
   const entriesToPractice = () => getEntriesWithDueSide(entries());
   const hasNoEntryToPractice = () => entriesToPractice().length === 0;
 
@@ -76,7 +76,7 @@ export function TestMode() {
     const entriesById = Object.fromEntries(store.state().entries.map((e) => [e.id, e]));
 
     const byIds = (ids: string[]) =>
-      ids.map((id) => entriesById[id]).filter((e): e is VocabEntry => e != null);
+      ids.map((id) => entriesById[id]).filter((e): e is StudyEntry => e != null);
 
     setDirection(snapshot.direction);
     setSourceToTarget(byIds(snapshot.sourceToTargetIds));
@@ -154,7 +154,7 @@ export function TestMode() {
 
   const startTest = () => {
     const toPractice = entriesToPractice();
-    const n = questionsPerSession();
+    const n = numberOfItems();
     const sessionBatch = toPractice.slice(0, n);
 
     if (sessionBatch.length === 0) {
@@ -197,8 +197,29 @@ export function TestMode() {
     store.setTestSession(buildSnapshot('question'));
   };
 
-  const removeFromList = (list: VocabEntry[], id: string): VocabEntry[] =>
+  const removeFromList = (list: StudyEntry[], id: string): StudyEntry[] =>
     list.filter((e) => e.id !== id);
+
+  const isAnswerCorrect = (
+    input: string,
+    expectedText: string,
+    acceptedAnswers: string[] | undefined,
+    locale: AppLanguage | null,
+  ): boolean => {
+    const normalizedInput = normalizeForCompare(input, locale);
+
+    if (normalizedInput === normalizeForCompare(expectedText, locale)) {
+      return true;
+    }
+
+    if (!acceptedAnswers || acceptedAnswers.length === 0) {
+      return false;
+    }
+
+    return acceptedAnswers.some(
+      (candidate) => normalizedInput === normalizeForCompare(candidate, locale),
+    );
+  };
 
   const submitAnswer = () => {
     const questions = currentRoundQuestions();
@@ -211,15 +232,18 @@ export function TestMode() {
 
     const rawInput = userInput().trim();
     const isSourceToTarget = direction() === 'source_to_target';
-    const correctAnswerRaw = isSourceToTarget ? entry.target.text : entry.source.text;
+    const expectedSide = isSourceToTarget ? entry.target : entry.source;
 
     const answerLocale = isSourceToTarget
       ? store.state().targetLanguage
       : store.state().mainLanguage;
 
-    const correct =
-      normalizeForCompare(rawInput, answerLocale) ===
-      normalizeForCompare(correctAnswerRaw, answerLocale);
+    const correct = isAnswerCorrect(
+      rawInput,
+      expectedSide.text,
+      expectedSide.acceptedAnswers,
+      answerLocale,
+    );
 
     const answer = rawInput;
 
@@ -253,12 +277,12 @@ export function TestMode() {
     }
   };
 
-  const refilterBatchFromStore = (): { needS2T: VocabEntry[]; needT2S: VocabEntry[] } => {
+  const refilterBatchFromStore = (): { needS2T: StudyEntry[]; needT2S: StudyEntry[] } => {
     const entriesById = Object.fromEntries(entries().map((e) => [e.id, e]));
 
     const batchEntries = sessionBatchIds()
       .map((id) => entriesById[id])
-      .filter((e): e is VocabEntry => e != null);
+      .filter((e): e is StudyEntry => e != null);
 
     const needS2T = batchEntries.filter(isSourceDue).reverse();
     const needT2S = batchEntries.filter(isTargetDue);

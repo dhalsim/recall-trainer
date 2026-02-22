@@ -4,12 +4,7 @@ import { t } from '../i18n';
 import { LANGUAGES, LANGUAGE_LABELS } from '../lib/language-pairs';
 import type { NostrProviderMethod } from '../lib/nostr/types';
 import type { AppLanguage } from '../store';
-import {
-  QUESTIONS_PER_SESSION_DEFAULT,
-  QUESTIONS_PER_SESSION_MAX,
-  QUESTIONS_PER_SESSION_MIN,
-  store,
-} from '../store';
+import { NUMBER_OF_ITEMS_DEFAULT, NUMBER_OF_ITEMS_MAX, NUMBER_OF_ITEMS_MIN, store } from '../store';
 import { assertUnreachable } from '../utils/nostr';
 
 interface SettingsDialogProps {
@@ -38,14 +33,14 @@ function getProviderLabel(method: NostrProviderMethod): string {
 }
 
 export function SettingsDialog(props: SettingsDialogProps) {
-  const [localQuestions, setLocalQuestions] = createSignal(store.state().questionsPerSession);
+  const [localNumberOfItems, setLocalNumberOfItems] = createSignal(store.state().numberOfItems);
   const simulationMode = () => store.state().simulationMode;
   const nostrProvider = () => store.state().authLoginState?.method ?? null;
 
   const effectiveAppLocale = (): AppLanguage =>
     store.state().appLocale ?? store.state().mainLanguage ?? 'en';
 
-  const syncFromStore = () => setLocalQuestions(store.state().questionsPerSession);
+  const syncFromStore = () => setLocalNumberOfItems(store.state().numberOfItems);
 
   createEffect(() => {
     if (props.open) {
@@ -113,33 +108,32 @@ export function SettingsDialog(props: SettingsDialogProps) {
               </p>
             </div>
             <div>
-              <label for="questions-per-session" class="block text-sm font-medium text-slate-700">
-                {t('Questions per session')}
+              <label for="number-of-items" class="block text-sm font-medium text-slate-700">
+                {t('Items per session')}
               </label>
               <input
-                id="questions-per-session"
+                id="number-of-items"
                 type="number"
-                min={QUESTIONS_PER_SESSION_MIN}
-                max={QUESTIONS_PER_SESSION_MAX}
-                value={localQuestions()}
+                min={NUMBER_OF_ITEMS_MIN}
+                max={NUMBER_OF_ITEMS_MAX}
+                value={localNumberOfItems()}
                 onInput={(e) => {
                   const v = e.currentTarget.valueAsNumber;
 
                   if (!Number.isNaN(v)) {
                     const clamped = Math.min(
-                      QUESTIONS_PER_SESSION_MAX,
-                      Math.max(QUESTIONS_PER_SESSION_MIN, Math.round(v)),
+                      NUMBER_OF_ITEMS_MAX,
+                      Math.max(NUMBER_OF_ITEMS_MIN, Math.round(v)),
                     );
 
-                    setLocalQuestions(clamped);
-                    store.setQuestionsPerSession(clamped);
+                    setLocalNumberOfItems(clamped);
+                    store.setNumberOfItems(clamped);
                   }
                 }}
                 class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
               <p class="mt-1 text-xs text-slate-500">
-                {QUESTIONS_PER_SESSION_MIN}–{QUESTIONS_PER_SESSION_MAX} (default{' '}
-                {QUESTIONS_PER_SESSION_DEFAULT})
+                {NUMBER_OF_ITEMS_MIN}–{NUMBER_OF_ITEMS_MAX} (default {NUMBER_OF_ITEMS_DEFAULT})
               </p>
             </div>
             <div class="border-t border-slate-200 pt-4">

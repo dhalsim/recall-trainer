@@ -42,7 +42,8 @@ export function Nip55ResultConsumer() {
     }
 
     return (
-      localStorage.getItem(NIP55_PENDING_KEY) !== null || localStorage.getItem(NIP55_RESULT_KEY) !== null
+      localStorage.getItem(NIP55_PENDING_KEY) !== null ||
+      localStorage.getItem(NIP55_RESULT_KEY) !== null
     );
   };
 
@@ -72,10 +73,12 @@ export function Nip55ResultConsumer() {
       } else if (result.type === 'sign_event') {
         const signedEvent = parseNip55SignEventResult(result.result);
         const authData = store.state().authLoginState?.data;
+
         const fallbackPubkey =
           authData && 'pubkey' in authData && typeof authData.pubkey === 'string'
             ? authData.pubkey
             : '';
+
         const provider =
           auth.provider?.method === 'nip55'
             ? auth.provider

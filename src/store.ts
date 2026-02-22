@@ -6,7 +6,7 @@ import { setSimulationTime } from './utils/clock';
 import { addDaysFromToday, endOfToday, realStartOfToday, startOfToday } from './utils/date';
 import { logger, setLogSignalEnabled } from './utils/logger';
 
-export const SETTINGS_VERSION = 4;
+export const SETTINGS_VERSION = 5;
 const { error: logError } = logger();
 
 /** Generate a unique ID. Falls back to Math.random when crypto.randomUUID is unavailable (non-secure context). */
@@ -42,10 +42,14 @@ export interface TestSessionSnapshot {
   sessionBatchIds: string[];
 }
 
+export type StudyItemType = 'vocab' | 'phrase' | 'qa' | 'cloze';
+
 /** Per-side (source or target) text, correctness, error count, and review schedule. */
-export interface SourceOrTarget {
+export interface StudySide {
   type: 'source' | 'target';
   text: string;
+  /** Optional alternate accepted answers for the side currently being asked. */
+  acceptedAnswers?: string[];
   correct: boolean;
   errorCount: number;
   /** Timestamp of start of the review day (local midnight). */
@@ -54,78 +58,20 @@ export interface SourceOrTarget {
   level: number;
 }
 
-export interface VocabEntry {
+export interface StudyEntry {
   id: string;
-  source: SourceOrTarget;
-  target: SourceOrTarget;
-}
-
-/** V2 shape: flat source/target strings and shared correct flags. Used for migration only. */
-interface VocabEntryV2Legacy {
-  id: string;
-  source: string;
-  target: string;
-  correctSourceToTarget: boolean;
-  correctTargetToSource: boolean;
-  errorCount: number;
-}
-
-/** V1 shape: single "correct" flag. Used for migration only. */
-interface VocabEntryV1 {
-  id: string;
-  source: string;
-  target: string;
-  correct?: boolean;
-  errorCount?: number;
-}
-
-interface AppStateV1 {
-  version: 1;
-  mainLanguage?: AppLanguage | null;
-  targetLanguage?: AppLanguage | null;
-  languageSelectionComplete?: boolean;
-  screen?: AppScreen;
-  entries?: VocabEntryV1[];
-}
-
-interface AppStateV2 {
-  version: 2;
-  mainLanguage?: AppLanguage | null;
-  targetLanguage?: AppLanguage | null;
-  languageSelectionComplete?: boolean;
-  screen?: AppScreen;
-  entries?: VocabEntryV2Legacy[];
-}
-
-/** V3 shape: per-side source/target but without nextReviewAt/level. Used for migration only. */
-interface SourceOrTargetV3 {
-  type: 'source' | 'target';
-  text: string;
-  correct: boolean;
-  errorCount: number;
-}
-
-interface VocabEntryV3 {
-  id: string;
-  source: SourceOrTargetV3;
-  target: SourceOrTargetV3;
-}
-
-interface AppStateV3 {
-  version: 3;
-  mainLanguage?: AppLanguage | null;
-  targetLanguage?: AppLanguage | null;
-  languageSelectionComplete?: boolean;
-  screen?: AppScreen;
-  entries?: VocabEntryV3[];
-  questionsPerSession?: number;
+  itemType?: StudyItemType;
+  description?: string;
+  hints?: string;
+  source: StudySide;
+  target: StudySide;
 }
 
 export type AppScreen = 'mode_selection' | 'word_entry' | 'test';
 
-export const QUESTIONS_PER_SESSION_MIN = 1;
-export const QUESTIONS_PER_SESSION_MAX = 50;
-export const QUESTIONS_PER_SESSION_DEFAULT = 5;
+export const NUMBER_OF_ITEMS_MIN = 1;
+export const NUMBER_OF_ITEMS_MAX = 50;
+export const NUMBER_OF_ITEMS_DEFAULT = 5;
 
 /** Max rounds per session (S→T + T→S) before forcing session end. */
 export const MAX_SESSION_ROUNDS = 10;
@@ -136,27 +82,27 @@ export const REVIEW_INTERVAL_DAYS = [0, 1, 1, 2, 3, 5, 8, 13] as const;
 export const REVIEW_MAX_LEVEL = REVIEW_INTERVAL_DAYS.length - 1;
 
 /** True if the source side (Source→Target) is due for review today. */
-export function isSourceDue(entry: VocabEntry): boolean {
+export function isSourceDue(entry: StudyEntry): boolean {
   return entry.source.nextReviewAt <= endOfToday();
 }
 
 /** True if the target side (Target→Source) is due for review today. */
-export function isTargetDue(entry: VocabEntry): boolean {
+export function isTargetDue(entry: StudyEntry): boolean {
   return entry.target.nextReviewAt <= endOfToday();
 }
 
 /** Entries that have at least one side due for review today. */
-export function getEntriesWithDueSide(entries: VocabEntry[]): VocabEntry[] {
+export function getEntriesWithDueSide(entries: StudyEntry[]): StudyEntry[] {
   return entries.filter((e) => isSourceDue(e) || isTargetDue(e));
 }
 
 /** Entries whose source side is due (Source→Target direction). */
-export function getDueSourceToTarget(entries: VocabEntry[]): VocabEntry[] {
+export function getDueSourceToTarget(entries: StudyEntry[]): StudyEntry[] {
   return entries.filter(isSourceDue);
 }
 
 /** Entries whose target side is due (Target→Source direction). */
-export function getDueTargetToSource(entries: VocabEntry[]): VocabEntry[] {
+export function getDueTargetToSource(entries: StudyEntry[]): StudyEntry[] {
   return entries.filter(isTargetDue);
 }
 
@@ -168,8 +114,8 @@ export interface AppState {
   appLocale: AppLanguage | null;
   languageSelectionComplete: boolean;
   screen: AppScreen;
-  entries: VocabEntry[];
-  questionsPerSession: number;
+  entries: StudyEntry[];
+  numberOfItems: number;
   /** When true, date utils use simulationDate instead of real time. */
   simulationMode: boolean;
   /** Start-of-day timestamp for the simulated "today". */
@@ -188,7 +134,7 @@ export type SyncPayload = Pick<
   | 'targetLanguage'
   | 'languageSelectionComplete'
   | 'entries'
-  | 'questionsPerSession'
+  | 'numberOfItems'
 >;
 
 const defaultState: AppState = {
@@ -199,151 +145,39 @@ const defaultState: AppState = {
   languageSelectionComplete: false,
   screen: 'mode_selection',
   entries: [],
-  questionsPerSession: QUESTIONS_PER_SESSION_DEFAULT,
+  numberOfItems: NUMBER_OF_ITEMS_DEFAULT,
   simulationMode: false,
   simulationDate: null,
   authLoginState: null,
   logWithSignal: false,
 };
 
-function toSourceOrTarget(
+function toStudySide(
   type: 'source' | 'target',
   text: string,
   correct: boolean,
   errorCount: number,
   nextReviewAt: number = startOfToday(),
   level: number = 0,
-): SourceOrTarget {
+): StudySide {
   return { type, text, correct, errorCount, nextReviewAt, level };
 }
 
-/**
- * Migrate persisted state from version 1 to version 2 (per-direction correct flags).
- * Keep this so very old state (v1) can still be upgraded.
- */
-function migrateV1ToV2(parsed: AppStateV1): AppStateV2 {
-  const correctDefault = false;
-
-  const entries: VocabEntryV2Legacy[] = (parsed.entries ?? []).map((e) => {
-    const correct = e.correct ?? correctDefault;
-
-    return {
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      correctSourceToTarget: correct,
-      correctTargetToSource: correct,
-      errorCount: e.errorCount ?? 0,
-    };
-  });
-
+function normalizeStudyEntry(entry: StudyEntry, now: number): StudyEntry {
   return {
-    version: 2,
-    mainLanguage: parsed.mainLanguage ?? null,
-    targetLanguage: parsed.targetLanguage ?? null,
-    languageSelectionComplete: parsed.languageSelectionComplete ?? false,
-    screen: parsed.screen ?? 'mode_selection',
-    entries,
-  };
-}
-
-/**
- * Migrate persisted state from version 2 to version 3 (per-side source/target).
- * V2 had a single errorCount; we put it on the source side to avoid double-counting.
- * Output is V3 shape (no nextReviewAt/level). Keep this so state from v2 can still be upgraded.
- */
-function migrateV2ToV3(parsed: AppStateV2): AppStateV3 {
-  const entries: VocabEntryV3[] = (parsed.entries ?? []).map((e) => ({
-    id: e.id,
+    ...entry,
+    itemType: entry.itemType ?? 'vocab',
     source: {
-      type: 'source' as const,
-      text: e.source,
-      correct: e.correctSourceToTarget,
-      errorCount: e.errorCount ?? 0,
+      ...entry.source,
+      nextReviewAt: typeof entry.source.nextReviewAt === 'number' ? entry.source.nextReviewAt : now,
+      level: typeof entry.source.level === 'number' ? entry.source.level : 0,
     },
     target: {
-      type: 'target' as const,
-      text: e.target,
-      correct: e.correctTargetToSource,
-      errorCount: 0,
+      ...entry.target,
+      nextReviewAt: typeof entry.target.nextReviewAt === 'number' ? entry.target.nextReviewAt : now,
+      level: typeof entry.target.level === 'number' ? entry.target.level : 0,
     },
-  }));
-
-  return {
-    version: 3,
-    mainLanguage: parsed.mainLanguage ?? null,
-    targetLanguage: parsed.targetLanguage ?? null,
-    languageSelectionComplete: parsed.languageSelectionComplete ?? false,
-    screen: parsed.screen ?? 'mode_selection',
-    entries,
   };
-}
-
-/**
- * Migrate persisted state from version 3 to version 4 (add nextReviewAt and level per side).
- * Existing entries become due immediately (level 0, nextReviewAt = start of today).
- */
-function migrateV3ToV4(parsed: AppStateV3): AppState {
-  const now = startOfToday();
-
-  const entries: VocabEntry[] = (parsed.entries ?? []).map((e) => ({
-    id: e.id,
-    source: {
-      ...e.source,
-      nextReviewAt: now,
-      level: 0,
-    },
-    target: {
-      ...e.target,
-      nextReviewAt: now,
-      level: 0,
-    },
-  }));
-
-  return {
-    version: SETTINGS_VERSION,
-    mainLanguage: parsed.mainLanguage ?? null,
-    targetLanguage: parsed.targetLanguage ?? null,
-    appLocale: null,
-    languageSelectionComplete: parsed.languageSelectionComplete ?? false,
-    screen: parsed.screen ?? 'mode_selection',
-    entries,
-    questionsPerSession:
-      typeof parsed.questionsPerSession === 'number'
-        ? Math.min(
-            QUESTIONS_PER_SESSION_MAX,
-            Math.max(QUESTIONS_PER_SESSION_MIN, parsed.questionsPerSession),
-          )
-        : QUESTIONS_PER_SESSION_DEFAULT,
-    simulationMode: false,
-    simulationDate: null,
-    authLoginState: null,
-    logWithSignal: false,
-  };
-}
-
-/** Run migrations one by one until state reaches SETTINGS_VERSION. */
-function migrateToLatest(parsed: { version?: number; [key: string]: unknown }): AppState {
-  let state: AppStateV1 | AppStateV2 | AppStateV3 | AppState = parsed as AppStateV1;
-  const version = state.version ?? 1;
-
-  if (version > SETTINGS_VERSION) {
-    return { ...defaultState };
-  }
-
-  while (state.version !== SETTINGS_VERSION) {
-    if (state.version === 1) {
-      state = migrateV1ToV2(state as AppStateV1);
-    } else if (state.version === 2) {
-      state = migrateV2ToV3(state as AppStateV2);
-    } else if (state.version === 3) {
-      state = migrateV3ToV4(state as AppStateV3);
-    } else {
-      return { ...defaultState };
-    }
-  }
-
-  return state as AppState;
 }
 
 function applyClockFromState(s: AppState): void {
@@ -365,42 +199,28 @@ function loadState(): AppState {
       return state;
     }
 
-    const parsed = JSON.parse(raw) as { version?: number; [key: string]: unknown };
-    const version = parsed.version ?? 1;
+    const appState = JSON.parse(raw) as AppState;
+    const version = appState.version ?? 0;
 
-    if (version > SETTINGS_VERSION) {
+    if (version < 5) {
+      localStorage.removeItem(STORAGE_KEY);
+      // Force a clean boot after clearing incompatible persisted state.
+      window.location.reload();
+
+      return { ...defaultState };
+    }
+
+    if (version !== SETTINGS_VERSION) {
       const state = { ...defaultState };
       applyClockFromState(state);
 
       return state;
     }
 
-    if (version < SETTINGS_VERSION) {
-      const migrated = migrateToLatest(parsed);
-      const merged = { ...defaultState, ...migrated, entries: migrated.entries ?? [] };
-      saveState(merged);
-      applyClockFromState(merged);
-
-      return merged;
-    }
-
-    const appState = parsed as unknown as AppState;
     const rawEntries = appState.entries ?? [];
     const now = startOfToday();
 
-    const entries: VocabEntry[] = rawEntries.map((e) => ({
-      ...e,
-      source: {
-        ...e.source,
-        nextReviewAt: typeof e.source.nextReviewAt === 'number' ? e.source.nextReviewAt : now,
-        level: typeof e.source.level === 'number' ? e.source.level : 0,
-      },
-      target: {
-        ...e.target,
-        nextReviewAt: typeof e.target.nextReviewAt === 'number' ? e.target.nextReviewAt : now,
-        level: typeof e.target.level === 'number' ? e.target.level : 0,
-      },
-    }));
+    const entries: StudyEntry[] = rawEntries.map((entry) => normalizeStudyEntry(entry, now));
 
     const state = {
       ...defaultState,
@@ -408,13 +228,10 @@ function loadState(): AppState {
       version: SETTINGS_VERSION,
       entries,
       appLocale: appState.appLocale ?? null,
-      questionsPerSession:
-        typeof appState.questionsPerSession === 'number'
-          ? Math.min(
-              QUESTIONS_PER_SESSION_MAX,
-              Math.max(QUESTIONS_PER_SESSION_MIN, appState.questionsPerSession),
-            )
-          : defaultState.questionsPerSession,
+      numberOfItems:
+        typeof appState.numberOfItems === 'number'
+          ? Math.min(NUMBER_OF_ITEMS_MAX, Math.max(NUMBER_OF_ITEMS_MIN, appState.numberOfItems))
+          : defaultState.numberOfItems,
       simulationMode: appState.simulationMode ?? false,
       simulationDate: appState.simulationDate ?? null,
       authLoginState: (appState as AppState).authLoginState ?? defaultState.authLoginState,
@@ -497,17 +314,18 @@ function createStore() {
     persist((prev) => ({ ...prev, screen: 'mode_selection' }));
   };
 
-  const setEntries = (entries: VocabEntry[]): void => {
+  const setEntries = (entries: StudyEntry[]): void => {
     persist((prev) => ({ ...prev, entries }));
   };
 
   const addEntry = (sourceText: string, targetText: string): void => {
     const now = startOfToday();
 
-    const entry: VocabEntry = {
+    const entry: StudyEntry = {
       id: generateId(),
-      source: toSourceOrTarget('source', sourceText.trim(), false, 0, now, 0),
-      target: toSourceOrTarget('target', targetText.trim(), false, 0, now, 0),
+      itemType: 'vocab',
+      source: toStudySide('source', sourceText.trim(), false, 0, now, 0),
+      target: toStudySide('target', targetText.trim(), false, 0, now, 0),
     };
 
     persist((prev) => ({
@@ -609,13 +427,10 @@ function createStore() {
     }));
   };
 
-  const setQuestionsPerSession = (value: number): void => {
-    const clamped = Math.min(
-      QUESTIONS_PER_SESSION_MAX,
-      Math.max(QUESTIONS_PER_SESSION_MIN, Math.round(value)),
-    );
+  const setNumberOfItems = (value: number): void => {
+    const clamped = Math.min(NUMBER_OF_ITEMS_MAX, Math.max(NUMBER_OF_ITEMS_MIN, Math.round(value)));
 
-    persist((prev) => ({ ...prev, questionsPerSession: clamped }));
+    persist((prev) => ({ ...prev, numberOfItems: clamped }));
   };
 
   const setSimulationMode = (enabled: boolean): void => {
@@ -667,19 +482,7 @@ function createStore() {
     const now = startOfToday();
     const rawEntries = payload.entries ?? [];
 
-    const entries: VocabEntry[] = rawEntries.map((e) => ({
-      ...e,
-      source: {
-        ...e.source,
-        nextReviewAt: typeof e.source.nextReviewAt === 'number' ? e.source.nextReviewAt : now,
-        level: typeof e.source.level === 'number' ? e.source.level : 0,
-      },
-      target: {
-        ...e.target,
-        nextReviewAt: typeof e.target.nextReviewAt === 'number' ? e.target.nextReviewAt : now,
-        level: typeof e.target.level === 'number' ? e.target.level : 0,
-      },
-    }));
+    const entries: StudyEntry[] = rawEntries.map((entry) => normalizeStudyEntry(entry, now));
 
     setState((prev) => {
       const next: AppState = {
@@ -690,13 +493,10 @@ function createStore() {
         languageSelectionComplete:
           payload.languageSelectionComplete ?? prev.languageSelectionComplete,
         entries,
-        questionsPerSession:
-          typeof payload.questionsPerSession === 'number'
-            ? Math.min(
-                QUESTIONS_PER_SESSION_MAX,
-                Math.max(QUESTIONS_PER_SESSION_MIN, payload.questionsPerSession),
-              )
-            : prev.questionsPerSession,
+        numberOfItems:
+          typeof payload.numberOfItems === 'number'
+            ? Math.min(NUMBER_OF_ITEMS_MAX, Math.max(NUMBER_OF_ITEMS_MIN, payload.numberOfItems))
+            : prev.numberOfItems,
       };
 
       saveState(next);
@@ -724,7 +524,7 @@ function createStore() {
     clearEntries,
     recordAnswer,
     setEntryCorrect,
-    setQuestionsPerSession,
+    setNumberOfItems,
     setSimulationMode,
     advanceSimulationDay,
     setAuthLoginState,

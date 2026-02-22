@@ -3,7 +3,7 @@ import { createSignal, For, onMount } from 'solid-js';
 
 import { t } from '../i18n';
 import { LANGUAGE_LABELS } from '../lib/language-pairs';
-import type { AppLanguage, VocabEntry } from '../store';
+import type { AppLanguage, StudyEntry } from '../store';
 import { store } from '../store';
 import { daysFromTodayTo } from '../utils/date';
 import { logger } from '../utils/logger';
@@ -143,7 +143,7 @@ export function WordEntry() {
 
   const handleRemove = (id: string) => store.removeEntry(id);
 
-  const handleEdit = (entry: VocabEntry) => {
+  const handleEdit = (entry: StudyEntry) => {
     setEditingEntryId(entry.id);
     setSource(entry.source.text);
     setTarget(entry.target.text);
@@ -154,7 +154,7 @@ export function WordEntry() {
     });
   };
 
-  const isMastered = (entry: VocabEntry) => entry.source.correct && entry.target.correct;
+  const isMastered = (entry: StudyEntry) => entry.source.correct && entry.target.correct;
 
   const toggleCorrect = (id: string, currentlyMastered: boolean) =>
     store.setEntryCorrect(id, !currentlyMastered);

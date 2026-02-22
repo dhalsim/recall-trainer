@@ -26,7 +26,7 @@ export function stateToSyncPayload(state: AppState): Nip78SyncPayload {
     targetLanguage: state.targetLanguage,
     languageSelectionComplete: state.languageSelectionComplete,
     entries: state.entries,
-    questionsPerSession: state.questionsPerSession,
+    numberOfItems: state.numberOfItems,
   };
 }
 

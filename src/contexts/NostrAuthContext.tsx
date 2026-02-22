@@ -1,11 +1,5 @@
 import type { JSX } from 'solid-js';
-import {
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  useContext,
-} from 'solid-js';
+import { createContext, createEffect, createMemo, createSignal, useContext } from 'solid-js';
 
 import { connectBunker, createBunkerProvider } from '../lib/nostr/BunkerProvider';
 import { createNip07Provider } from '../lib/nostr/Nip07Provider';
@@ -88,6 +82,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     nip44Encrypt: null,
     nip44Decrypt: null,
   });
+
   const authLoginState = createMemo(() => store.state().authLoginState);
 
   createEffect(() => {
@@ -98,6 +93,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
     if (!hasDataOrNip07) {
       setProvider(null);
+
       if (!isInitialized()) {
         setIsInitialized(true);
       }
@@ -136,6 +132,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
 
         break;
       }
+
       case 'nip55':
         if (auth.data && 'pubkey' in auth.data) {
           setProvider(createNip55Provider(auth.data));
@@ -232,6 +229,7 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
       loggedIn: true,
       data: { pubkey: nextPubkey },
     });
+
     setProvider(createNip55Provider({ pubkey: nextPubkey }));
   };
 

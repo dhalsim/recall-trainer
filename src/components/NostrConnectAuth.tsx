@@ -12,8 +12,8 @@ import {
   ensureNip55ClipboardReadAccess,
   isNip55ClipboardAccessGranted,
 } from '../lib/nostr/nip55ClipboardFlow';
-import { setAmberLoginFlowActive } from '../lib/nostr/nip55UiState';
 import { createNip55Provider, startNip55GetPublicKeyFlow } from '../lib/nostr/Nip55Provider';
+import { setAmberLoginFlowActive } from '../lib/nostr/nip55UiState';
 import {
   decryptContent,
   generateNostrConnectUri,
