@@ -54,6 +54,11 @@ type PendingWalletAction =
       content: Nip60WalletContent;
     }
   | {
+      type: 'remove_mint';
+      pubkey: string;
+      content: Nip60WalletContent;
+    }
+  | {
       type: 'publish_token';
       pubkey: string;
       mintUrl: string;
@@ -83,6 +88,13 @@ function isNip55NavigationError(error: unknown): boolean {
     'code' in error &&
     (error as { code?: string }).code === NIP55_NAVIGATION_CODE
   );
+}
+
+function normalizeMintUrl(rawUrl: string): string {
+  const parsed = new URL(rawUrl.trim());
+  const withoutTrailingSlash = parsed.toString().replace(/\/+$/, '');
+
+  return withoutTrailingSlash;
 }
 
 function readPendingWalletAction(): PendingWalletAction | null {
@@ -125,7 +137,6 @@ export function WalletDialog(props: WalletDialogProps) {
   const [proofsByMint, setProofsByMint] = createSignal<Map<string, Proof[]>>(new Map());
   const [pendingSentByMint, setPendingSentByMint] = createSignal<Map<string, Proof[]>>(new Map());
   const [showCreateForm, setShowCreateForm] = createSignal(false);
-  const [showAddMint, setShowAddMint] = createSignal(false);
   const [createMintUrls, setCreateMintUrls] = createSignal<string[]>(['']);
   const [creating, setCreating] = createSignal(false);
   const [addMintUrl, setAddMintUrl] = createSignal('');
@@ -230,17 +241,32 @@ export function WalletDialog(props: WalletDialogProps) {
     await syncWalletFromRelays(pubkey);
   };
 
-  createEffect(() => {
-    if (props.open && auth.isLoggedIn()) {
-      void (async () => {
-        await resumePendingWalletAction();
-        await loadWallet();
-      })();
+  createEffect((prev: { open: boolean; pubkey: string | null } | undefined) => {
+    const open = props.open;
+    const pubkey = auth.pubkey();
+
+    if (!open || !pubkey) {
+      return { open, pubkey };
     }
+
+    if (prev?.open && prev.pubkey === pubkey) {
+      return { open, pubkey };
+    }
+
+    // Never block wallet hydration on pending signer actions.
+    // If a pending action hangs (e.g. external signer flow), we still want to show cached/relay data.
+    void loadWallet();
+    void resumePendingWalletAction();
+
+    return { open, pubkey };
   });
 
   const completeWalletAction = async (action: PendingWalletAction): Promise<void> => {
-    if (action.type === 'create_wallet' || action.type === 'add_mint') {
+    if (
+      action.type === 'create_wallet' ||
+      action.type === 'add_mint' ||
+      action.type === 'remove_mint'
+    ) {
       const encrypted = await auth.nip44Encrypt(
         action.pubkey,
         JSON.stringify(walletContentToArray(action.content)),
@@ -249,7 +275,11 @@ export function WalletDialog(props: WalletDialogProps) {
       const template = buildWalletEventTemplate(encrypted);
 
       const reason =
-        action.type === 'create_wallet' ? t('Create Cashu wallet') : t('Add mint to wallet');
+        action.type === 'create_wallet'
+          ? t('Create Cashu wallet')
+          : action.type === 'add_mint'
+            ? t('Add mint to wallet')
+            : t('Remove mint from wallet');
 
       const { signedEvent } = await auth.signEvent({
         event: template,
@@ -270,7 +300,6 @@ export function WalletDialog(props: WalletDialogProps) {
       } else {
         setWalletContent(action.content);
         setAddMintUrl('');
-        setShowAddMint(false);
         setShowDiscoverPanel(false);
         writeWalletCache(action.pubkey, action.content, proofsByMint());
       }
@@ -383,12 +412,28 @@ export function WalletDialog(props: WalletDialogProps) {
       return;
     }
 
-    const newMints = [...content.mints, urlToAdd];
+    let normalizedMintUrl = '';
+    try {
+      normalizedMintUrl = normalizeMintUrl(urlToAdd);
+    } catch (_err) {
+      setErrorMessage(t('Enter a valid mint URL.'));
+
+      return;
+    }
+
+    const existingMintUrls = new Set(content.mints.map((mint) => mint.trim().toLowerCase()));
+
+    if (existingMintUrls.has(normalizedMintUrl.toLowerCase())) {
+      setErrorMessage(t('Mint is already in your wallet.'));
+
+      return;
+    }
+
+    const newMints = [...content.mints, normalizedMintUrl];
     const updated: Nip60WalletContent = { ...content, mints: newMints };
 
     setWalletContent(updated);
     setAddMintUrl('');
-    setShowAddMint(false);
     setShowDiscoverPanel(false);
     setErrorMessage(null);
 
@@ -412,6 +457,59 @@ export function WalletDialog(props: WalletDialogProps) {
       } catch (err) {
         logError('[CashuWallet] Add mint publish failed:', err);
         setErrorMessage(t('Failed to create wallet.'));
+      }
+    })();
+  };
+
+  const handleRemoveMint = (mintUrl: string): void => {
+    const content = walletContent();
+
+    if (!content) {
+      return;
+    }
+
+    const targetMint = mintUrl.trim().toLowerCase();
+    const remainingMints = content.mints.filter((mint) => mint.trim().toLowerCase() !== targetMint);
+
+    if (remainingMints.length === content.mints.length) {
+      return;
+    }
+
+    const updated: Nip60WalletContent = { ...content, mints: remainingMints };
+    const nextProofsByMint = new Map(proofsByMint());
+    nextProofsByMint.delete(mintUrl);
+    const nextPendingSentByMint = new Map(pendingSentByMint());
+    nextPendingSentByMint.delete(mintUrl);
+
+    setWalletContent(updated);
+    setProofsByMint(nextProofsByMint);
+    setPendingSentByMint(nextPendingSentByMint);
+    setErrorMessage(null);
+
+    if (selectedMintUrl() === mintUrl) {
+      closeMintPanel();
+    }
+
+    const pk = auth.pubkey();
+
+    if (pk) {
+      writeWalletCache(pk, updated, nextProofsByMint);
+    }
+
+    void (async () => {
+      if (!pk) {
+        return;
+      }
+
+      try {
+        const completed = await runWalletAction({ type: 'remove_mint', pubkey: pk, content: updated });
+
+        if (!completed) {
+          return;
+        }
+      } catch (err) {
+        logError('[CashuWallet] Remove mint publish failed:', err);
+        setErrorMessage(t('Failed to remove mint.'));
       }
     })();
   };
@@ -507,6 +605,7 @@ export function WalletDialog(props: WalletDialogProps) {
 
   const openDiscoverPanel = (): void => {
     setShowDiscoverPanel(true);
+    setErrorMessage(null);
     setDiscoverStore('error', null);
     setDiscoverStore('loading', true);
 
@@ -815,49 +914,52 @@ export function WalletDialog(props: WalletDialogProps) {
                               setSelectedMintUrl(mintUrl);
                               setMintPanel('history');
                             }}
+                            onRemove={() => handleRemoveMint(mintUrl)}
                           />
                         )}
                       </For>
                     </ul>
                   </div>
-
-                  <Show when={showAddMint()}>
-                    <div class="flex gap-2">
+                  <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div class="space-y-1">
+                      <p class="text-sm font-semibold text-slate-800">{t('Add Mint')}</p>
+                      <p class="text-xs text-slate-500">
+                        {t('Choose how you want to add a mint to your wallet.')}
+                      </p>
+                    </div>
+                    <div class="mt-3">
+                      <label class="mb-2 block text-xs font-medium uppercase tracking-wide text-slate-700">
+                        {t('Mint URL')}
+                      </label>
                       <input
                         type="url"
-                        placeholder={t('Mint URL')}
+                        placeholder="https://mint-url"
                         value={addMintUrl()}
                         onInput={(e) => setAddMintUrl(e.currentTarget.value)}
-                        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
+                    </div>
+                    <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <button
                         type="button"
                         onClick={() => handleAddMint()}
-                        class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                        class="flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                       >
-                        {t('Add Mint')}
+                        + {t('Add Mint')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openDiscoverPanel}
+                        class="flex items-center justify-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                      >
+                        {t('Discover mints')}
                       </button>
                     </div>
-                  </Show>
-                  <Show when={errorMessage()}>
-                    <p class="text-sm text-red-600">{errorMessage()}</p>
-                  </Show>
-                  <div class="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowAddMint((v) => !v)}
-                      class="text-sm text-blue-600 hover:underline"
-                    >
-                      {showAddMint() ? t('Close') : `+ ${t('Add Mint')}`}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={openDiscoverPanel}
-                      class="text-sm text-blue-600 hover:underline"
-                    >
-                      {t('Discover mints')}
-                    </button>
-                  </div>
+
+                    <Show when={errorMessage()}>
+                      <p class="mt-3 text-sm text-red-600">{errorMessage()}</p>
+                    </Show>
+                  </section>
                 </div>
               </Show>
 

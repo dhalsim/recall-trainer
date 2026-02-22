@@ -125,30 +125,37 @@ export function MintDiscovery(props: MintDiscoveryProps) {
           ) : null
         }
       >
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => props.onBack?.()}
-            class="text-sm text-slate-600 hover:underline"
-          >
-            ← {t('Back')}
-          </button>
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="text-xs text-slate-500">
-              {t('Last synced')}:{' '}
-              {props.lastSyncedAt != null ? formatRelativeTime(props.lastSyncedAt) : t('Never')}
-            </span>
-            <button
-              type="button"
-              onClick={() => props.onRefresh?.()}
-              disabled={props.store.loading || props.isSyncing()}
-              class="rounded bg-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {t('Refresh')}
-            </button>
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="space-y-1">
+              <button
+                type="button"
+                onClick={() => props.onBack?.()}
+                class="text-sm text-slate-600 hover:underline"
+              >
+                ← {t('Back')}
+              </button>
+              <p class="text-sm font-semibold text-slate-800">{t('Discover mints')}</p>
+              <p class="text-xs text-slate-500">
+                {t('Browse trusted mints and add one to your wallet.')}
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-xs text-slate-500">
+                {t('Last synced')}:{' '}
+                {props.lastSyncedAt != null ? formatRelativeTime(props.lastSyncedAt) : t('Never')}
+              </span>
+              <button
+                type="button"
+                onClick={() => props.onRefresh?.()}
+                disabled={props.store.loading || props.isSyncing()}
+                class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {t('Refresh')}
+              </button>
+            </div>
           </div>
         </div>
-        <p class="text-sm font-medium text-slate-700">{t('Discover mints')}</p>
         <Show when={props.store.loading}>
           <p class="text-sm text-slate-500">{t('Discovering…')}</p>
         </Show>
@@ -167,7 +174,7 @@ export function MintDiscovery(props: MintDiscoveryProps) {
                 const wotLabel = () => formatWotScore(mint());
 
                 return (
-                  <li class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <li class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                       <div class="flex min-w-0 flex-1 items-center gap-2">
                         <Show when={mint().mintInfo?.icon_url}>
@@ -177,11 +184,11 @@ export function MintDiscovery(props: MintDiscoveryProps) {
                             class="h-6 w-6 shrink-0 rounded object-contain"
                           />
                         </Show>
-                        <span class="truncate font-mono text-xs text-slate-700" title={url}>
+                        <span class="truncate text-sm font-medium text-slate-800" title={url}>
                           {mint().mintInfo?.name ?? truncateUrl(url, 36)}
                         </span>
                         <Show when={mintDepth() !== null}>
-                          <span class="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                          <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
                             {depthLabel(mintDepth()!)}
                           </span>
                         </Show>
@@ -198,6 +205,9 @@ export function MintDiscovery(props: MintDiscoveryProps) {
                         </span>
                       </Show>
                     </div>
+                    <p class="mt-1 truncate font-mono text-[11px] text-slate-500" title={url}>
+                      {url}
+                    </p>
                     <div class="mt-2 flex flex-wrap items-center gap-3">
                       <Show
                         when={wotLabel()}
@@ -209,7 +219,7 @@ export function MintDiscovery(props: MintDiscoveryProps) {
                         }
                       >
                         <span
-                          class="text-xs font-medium text-indigo-700"
+                          class="text-xs font-semibold text-indigo-700"
                           title={t('WoT score: weighted rating from trusted reviewers')}
                         >
                           {t('WoT score')}: {wotLabel()}
@@ -221,14 +231,14 @@ export function MintDiscovery(props: MintDiscoveryProps) {
                       <button
                         type="button"
                         onClick={() => setSelectedMintUrl(url)}
-                        class="rounded bg-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                        class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
                       >
                         {t('Details')}
                       </button>
                       <button
                         type="button"
                         onClick={() => props.onAddMint(url)}
-                        class="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        class="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         {t('Add to wallet')}
                       </button>

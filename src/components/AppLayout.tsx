@@ -10,6 +10,7 @@ import { store } from '../store';
 
 import { AppHeader } from './AppHeader';
 import { AppLogs } from './AppLogs';
+import { Nip55ResultConsumer } from './Nip55ResultConsumer';
 import { NostrConnectModal } from './NostrConnectModal';
 import { SettingsDialog } from './SettingsDialog';
 
@@ -86,6 +87,7 @@ export function AppLayout(props: AppLayoutProps) {
         onClose={() => setShowConnectModal(false)}
         onSuccess={() => setShowConnectModal(false)}
       />
+      <Nip55ResultConsumer />
     </div>
   );
 }

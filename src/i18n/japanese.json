@@ -267,5 +267,10 @@
   "WoT score: weighted rating from trusted reviewers": "WoT スコア：信頼するレビュアーの加重評価",
   "Mint info API could not be reached ({{code}}). The mint may be inactive.": "ミント情報APIに接続できませんでした（{{code}}）。ミントが非稼働の可能性があります。",
   "Mint info API could not be reached. Mint may be inactive.": "ミント情報APIに接続できませんでした。ミントが非稼働の可能性があります。",
-  "Mint unreachable": "ミントに接続不可"
+  "Mint unreachable": "ミントに接続不可",
+  "Choose how you want to add a mint to your wallet.": "ウォレットにミントを追加する方法を選んでください。",
+  "Browse trusted mints and add one to your wallet.": "信頼できるミントを確認してウォレットに追加しましょう。",
+  "Mint is already in your wallet.": "このミントはすでにウォレットに追加されています。",
+  "Remove mint from wallet": "ウォレットからミントを削除",
+  "Failed to remove mint.": "ミントの削除に失敗しました。"
 }

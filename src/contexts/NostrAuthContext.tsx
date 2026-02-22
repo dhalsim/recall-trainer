@@ -2,27 +2,14 @@ import type { JSX } from 'solid-js';
 import {
   createContext,
   createEffect,
+  createMemo,
   createSignal,
-  onCleanup,
-  onMount,
   useContext,
 } from 'solid-js';
 
 import { connectBunker, createBunkerProvider } from '../lib/nostr/BunkerProvider';
 import { createNip07Provider } from '../lib/nostr/Nip07Provider';
-import {
-  NIP55_PENDING_KEY,
-  NIP55_RESULT_KEY,
-  NIP55_RESULT_READY_EVENT,
-} from '../lib/nostr/nip55ClipboardFlow';
-import {
-  checkNip55Callback,
-  clearNip55Result,
-  createNip55Provider,
-  getNip55Result,
-  parseNip55Nip44Result,
-  parseNip55SignEventResult,
-} from '../lib/nostr/Nip55Provider';
+import { createNip55Provider } from '../lib/nostr/Nip55Provider';
 import { clearRelays, getRelays, subscribeRelays } from '../lib/nostr/nip65';
 import { clearSyncState, subscribeSyncEvents } from '../lib/nostr/nip78';
 import {
@@ -67,6 +54,10 @@ interface NostrAuthContextValue {
   getPendingNip55SignResult: () => SignEventResult | null;
   nip44Encrypt: (pubkey: string, plaintext: string) => Promise<string>;
   nip44Decrypt: (pubkey: string, ciphertext: string) => Promise<string>;
+  applyNip55Login: (pubkey: string) => void;
+  setPendingNip55SignResult: (result: SignEventResult) => void;
+  setPendingNip55EncryptResult: (result: string) => void;
+  setPendingNip55DecryptResult: (result: string) => void;
 }
 
 const NostrAuthContext = createContext<NostrAuthContextValue | null>(null);
@@ -97,27 +88,89 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     nip44Encrypt: null,
     nip44Decrypt: null,
   });
+  const authLoginState = createMemo(() => store.state().authLoginState);
 
-  const [lastConsumedNip55RequestId, setLastConsumedNip55RequestId] = createSignal<string | null>(
-    null,
-  );
+  createEffect(() => {
+    const auth = authLoginState();
+    let cancelled = false;
 
-  const [nip55ResultTick, setNip55ResultTick] = createSignal(0);
+    const hasDataOrNip07 = auth?.loggedIn && (auth.method === 'nip07' || auth.data !== undefined);
 
-  onMount(() => {
-    if (typeof window === 'undefined') {
+    if (!hasDataOrNip07) {
+      setProvider(null);
+      if (!isInitialized()) {
+        setIsInitialized(true);
+      }
+
       return;
     }
 
-    const onResultReady = () => setNip55ResultTick((v) => v + 1);
-    const onFocus = () => setNip55ResultTick((v) => v + 1);
-    window.addEventListener(NIP55_RESULT_READY_EVENT, onResultReady);
-    window.addEventListener('focus', onFocus);
+    switch (auth.method) {
+      case 'bunker':
+        if (
+          auth.data &&
+          'userPubkey' in auth.data &&
+          'remoteSignerPubkey' in auth.data &&
+          'ephemeralSecret' in auth.data
+        ) {
+          setProvider(createBunkerProvider(auth.data));
+        } else {
+          setProvider(null);
+        }
 
-    onCleanup(() => {
-      window.removeEventListener(NIP55_RESULT_READY_EVENT, onResultReady);
-      window.removeEventListener('focus', onFocus);
-    });
+        break;
+      case 'nostrconnect':
+        if (auth.data && 'uri' in auth.data) {
+          setProvider(createNostrConnectProvider(auth.data));
+        } else {
+          setProvider(null);
+        }
+
+        break;
+      case 'nip07': {
+        void delay(createNip07Provider, 2000).then((p) => {
+          if (!cancelled) {
+            setProvider(p);
+          }
+        });
+
+        break;
+      }
+      case 'nip55':
+        if (auth.data && 'pubkey' in auth.data) {
+          setProvider(createNip55Provider(auth.data));
+        } else {
+          setProvider(null);
+        }
+
+        break;
+      case 'passkey_signer':
+        if (auth.data && 'ncryptsec' in auth.data && 'credentialId' in auth.data) {
+          setProvider(createPasskeySigner(auth.data));
+        } else {
+          setProvider(null);
+        }
+
+        break;
+      case 'password_signer':
+        if (auth.data && 'ncryptsec' in auth.data && !('credentialId' in auth.data)) {
+          setProvider(createPasswordSigner(auth.data));
+        } else {
+          setProvider(null);
+        }
+
+        break;
+      default:
+        assertUnreachable(auth.method);
+    }
+
+    if (!isInitialized()) {
+      setIsInitialized(true);
+    }
+
+    return () => {
+      cancelled = true;
+    };
   });
 
   // Resolve pubkey when provider changes
@@ -171,146 +224,28 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     };
   });
 
-  createEffect(() => {
-    nip55ResultTick();
-
-    const auth = store.state().authLoginState;
-
-    const shouldProcessNip55 =
-      typeof window !== 'undefined' &&
-      (auth?.method === 'nip55' ||
-        localStorage.getItem(NIP55_PENDING_KEY) !== null ||
-        localStorage.getItem(NIP55_RESULT_KEY) !== null);
-
-    let nip55Result = null;
-
-    if (shouldProcessNip55) {
-      log(
-        `[NostrAuth] NIP-55 effect tick. currentUrl=${window.location.pathname}${window.location.search}`,
-      );
-
-      checkNip55Callback();
-
-      nip55Result = getNip55Result();
-    }
-
-    if (nip55Result) {
-      if (lastConsumedNip55RequestId() === nip55Result.requestId) {
-        log(`[NostrAuth] Duplicate NIP-55 result ignored. requestId=${nip55Result.requestId}`);
-        clearNip55Result();
-
-        return;
-      }
-
-      setLastConsumedNip55RequestId(nip55Result.requestId);
-      log(`[NostrAuth] Consuming NIP-55 result. type=${nip55Result.type}`);
-
-      if (nip55Result.type === 'get_public_key') {
-        store.setAuthLoginState({
-          method: 'nip55',
-          loggedIn: true,
-          data: { pubkey: nip55Result.result },
-        });
-
-        setProvider(createNip55Provider({ pubkey: nip55Result.result }));
-        log('[NostrAuth] NIP-55 login restored from get_public_key result.');
-        clearNip55Result();
-      } else if (nip55Result.type === 'sign_event') {
-        const auth = store.state().authLoginState;
-
-        const nip55Data: Nip55SignerData | null =
-          auth?.method === 'nip55' && auth.data && 'pubkey' in auth.data ? auth.data : null;
-
-        const p = nip55Data ? createNip55Provider(nip55Data) : createNip55Provider({ pubkey: '' });
-        const signedEvent = parseNip55SignEventResult(nip55Result.result);
-        setPendingNip55Result((prev) => ({ ...prev, signEvent: { signedEvent, provider: p } }));
-        log('[NostrAuth] Stored pending NIP-55 sign_event result.');
-        clearNip55Result();
-      } else if (nip55Result.type === 'nip44_encrypt') {
-        const encrypted = parseNip55Nip44Result(nip55Result.result);
-        setPendingNip55Result((prev) => ({ ...prev, nip44Encrypt: encrypted }));
-        log('[NostrAuth] Stored pending NIP-55 nip44_encrypt result.');
-        clearNip55Result();
-      } else if (nip55Result.type === 'nip44_decrypt') {
-        const decrypted = parseNip55Nip44Result(nip55Result.result);
-        setPendingNip55Result((prev) => ({ ...prev, nip44Decrypt: decrypted }));
-        log('[NostrAuth] Stored pending NIP-55 nip44_decrypt result.');
-        clearNip55Result();
-      }
-    }
-
-    if (!nip55Result || nip55Result.type !== 'get_public_key') {
-      const hasDataOrNip07 = auth?.loggedIn && (auth.method === 'nip07' || auth.data !== undefined);
-
-      if (!hasDataOrNip07) {
-        setProvider(null);
-      } else {
-        switch (auth.method) {
-          case 'bunker':
-            if (
-              auth.data &&
-              'userPubkey' in auth.data &&
-              'remoteSignerPubkey' in auth.data &&
-              'ephemeralSecret' in auth.data
-            ) {
-              setProvider(createBunkerProvider(auth.data));
-            } else {
-              setProvider(null);
-            }
-
-            break;
-          case 'nostrconnect':
-            if (auth.data && 'uri' in auth.data) {
-              setProvider(createNostrConnectProvider(auth.data));
-            } else {
-              setProvider(null);
-            }
-
-            break;
-          case 'nip07': {
-            delay(createNip07Provider, 2000).then((p) => {
-              setProvider(p);
-            });
-
-            break;
-          }
-
-          case 'nip55':
-            if (auth.data && 'pubkey' in auth.data) {
-              setProvider(createNip55Provider(auth.data));
-            } else {
-              setProvider(null);
-            }
-
-            break;
-          case 'passkey_signer':
-            if (auth.data && 'ncryptsec' in auth.data && 'credentialId' in auth.data) {
-              setProvider(createPasskeySigner(auth.data));
-            } else {
-              setProvider(null);
-            }
-
-            break;
-          case 'password_signer':
-            if (auth.data && 'ncryptsec' in auth.data && !('credentialId' in auth.data)) {
-              setProvider(createPasswordSigner(auth.data));
-            } else {
-              setProvider(null);
-            }
-
-            break;
-          default:
-            assertUnreachable(auth.method);
-        }
-      }
-    }
-
-    if (!isInitialized()) {
-      setIsInitialized(true);
-    }
-  });
-
   const getIsLoggedIn = (): boolean => Boolean(provider());
+
+  const applyNip55Login = (nextPubkey: string): void => {
+    store.setAuthLoginState({
+      method: 'nip55',
+      loggedIn: true,
+      data: { pubkey: nextPubkey },
+    });
+    setProvider(createNip55Provider({ pubkey: nextPubkey }));
+  };
+
+  const setPendingNip55SignResult = (result: SignEventResult): void => {
+    setPendingNip55Result((prev) => ({ ...prev, signEvent: result }));
+  };
+
+  const setPendingNip55EncryptResult = (result: string): void => {
+    setPendingNip55Result((prev) => ({ ...prev, nip44Encrypt: result }));
+  };
+
+  const setPendingNip55DecryptResult = (result: string): void => {
+    setPendingNip55Result((prev) => ({ ...prev, nip44Decrypt: result }));
+  };
 
   const loginWithBunker = async (bunkerUrl: string): Promise<LoginResult> => {
     try {
@@ -579,6 +514,10 @@ export function NostrAuthProvider(props: { children: JSX.Element }) {
     getPendingNip55SignResult,
     nip44Encrypt,
     nip44Decrypt,
+    applyNip55Login,
+    setPendingNip55SignResult,
+    setPendingNip55EncryptResult,
+    setPendingNip55DecryptResult,
   };
 
   return <NostrAuthContext.Provider value={value}>{props.children}</NostrAuthContext.Provider>;

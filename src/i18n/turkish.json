@@ -267,5 +267,10 @@
   "WoT score: weighted rating from trusted reviewers": "WoT puanı: güvenilen inceleyicilerin ağırlıklı değerlendirmesi",
   "Mint info API could not be reached ({{code}}). The mint may be inactive.": "Darphane bilgi API'sine ulaşılamadı ({{code}}). Darphane artık aktif olmayabilir.",
   "Mint info API could not be reached. Mint may be inactive.": "Darphane bilgi API'sine ulaşılamadı. Darphane artık aktif olmayabilir.",
-  "Mint unreachable": "Darphane ulaşılamıyor"
+  "Mint unreachable": "Darphane ulaşılamıyor",
+  "Choose how you want to add a mint to your wallet.": "Cüzdanınıza darphane eklemek için bir yöntem seçin.",
+  "Browse trusted mints and add one to your wallet.": "Güvenilir darphaneleri inceleyin ve cüzdanınıza ekleyin.",
+  "Mint is already in your wallet.": "Bu darphane zaten cüzdanınızda.",
+  "Remove mint from wallet": "Darphaneyi cüzdandan kaldır",
+  "Failed to remove mint.": "Darphane kaldırılamadı."
 }

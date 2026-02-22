@@ -267,5 +267,10 @@
   "WoT score: weighted rating from trusted reviewers": "WoT score: weighted rating from trusted reviewers",
   "Mint info API could not be reached ({{code}}). The mint may be inactive.": "Mint info API could not be reached ({{code}}). The mint may be inactive.",
   "Mint info API could not be reached. Mint may be inactive.": "Mint info API could not be reached. Mint may be inactive.",
-  "Mint unreachable": "Mint unreachable"
+  "Mint unreachable": "Mint unreachable",
+  "Choose how you want to add a mint to your wallet.": "Choose how you want to add a mint to your wallet.",
+  "Browse trusted mints and add one to your wallet.": "Browse trusted mints and add one to your wallet.",
+  "Mint is already in your wallet.": "Mint is already in your wallet.",
+  "Remove mint from wallet": "Remove mint from wallet",
+  "Failed to remove mint.": "Failed to remove mint."
 }

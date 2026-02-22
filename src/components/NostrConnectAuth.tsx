@@ -12,6 +12,7 @@ import {
   ensureNip55ClipboardReadAccess,
   isNip55ClipboardAccessGranted,
 } from '../lib/nostr/nip55ClipboardFlow';
+import { setAmberLoginFlowActive } from '../lib/nostr/nip55UiState';
 import { createNip55Provider, startNip55GetPublicKeyFlow } from '../lib/nostr/Nip55Provider';
 import {
   decryptContent,
@@ -482,6 +483,10 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
     log('[NostrConnectAuth] NIP-55 login detected but provider was unavailable for modal success.');
   });
 
+  createEffect(() => {
+    setAmberLoginFlowActive(flow() === 'flow_amber_login');
+  });
+
   async function handleSetUpPasskey() {
     setPasskeyLoading(true);
     props.onError('');
@@ -505,6 +510,8 @@ export function NostrConnectAuth(props: NostrConnectAuthProps) {
   }
 
   onCleanup(() => {
+    setAmberLoginFlowActive(false);
+
     const sub = currentSubscription();
 
     if (sub) {
