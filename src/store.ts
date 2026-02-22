@@ -2,6 +2,7 @@ import { createSignal } from 'solid-js';
 
 import { setLocale } from './i18n';
 import type { AuthLoginState } from './lib/nostr/types';
+import type { StudyItem, StudyItemType, StudySet } from './lib/study-sets/types';
 import { setSimulationTime } from './utils/clock';
 import { addDaysFromToday, endOfToday, realStartOfToday, startOfToday } from './utils/date';
 import { logger, setLogSignalEnabled } from './utils/logger';
@@ -42,8 +43,6 @@ export interface TestSessionSnapshot {
   sessionBatchIds: string[];
 }
 
-export type StudyItemType = 'vocab' | 'phrase' | 'qa' | 'cloze';
-
 /** Per-side (source or target) text, correctness, error count, and review schedule. */
 export interface StudySide {
   type: 'source' | 'target';
@@ -65,6 +64,20 @@ export interface StudyEntry {
   hints?: string;
   source: StudySide;
   target: StudySide;
+}
+
+export interface LocalStudySet extends StudySet {
+  importedFrom?: string;
+  importedAt: number;
+  entries: StudyEntry[];
+}
+
+export interface CreateLocalStudySetInput {
+  name: string;
+  description: string;
+  tags: string[];
+  level: number;
+  items: StudyItem[];
 }
 
 export type AppScreen = 'mode_selection' | 'word_entry' | 'test';
@@ -114,7 +127,8 @@ export interface AppState {
   appLocale: AppLanguage | null;
   languageSelectionComplete: boolean;
   screen: AppScreen;
-  entries: StudyEntry[];
+  localSets: LocalStudySet[];
+  activeLocalSetId: string | null;
   numberOfItems: number;
   /** When true, date utils use simulationDate instead of real time. */
   simulationMode: boolean;
@@ -133,9 +147,32 @@ export type SyncPayload = Pick<
   | 'mainLanguage'
   | 'targetLanguage'
   | 'languageSelectionComplete'
-  | 'entries'
+  | 'localSets'
+  | 'activeLocalSetId'
   | 'numberOfItems'
 >;
+
+const DEFAULT_LOCAL_SET_ID = 'local-default-set';
+
+function createDefaultLocalSet(now: number = Date.now()): LocalStudySet {
+  return {
+    id: DEFAULT_LOCAL_SET_ID,
+    name: 'My Study Set',
+    author: 'local',
+    mainLanguage: 'en',
+    targetLanguage: 'ja',
+    tags: [],
+    description: 'Default local study set.',
+    level: 1,
+    numberOfItems: 0,
+    type: 'vocab',
+    createdAt: now,
+    updatedAt: now,
+    items: [],
+    importedAt: now,
+    entries: [],
+  };
+}
 
 const defaultState: AppState = {
   version: SETTINGS_VERSION,
@@ -144,7 +181,8 @@ const defaultState: AppState = {
   appLocale: null,
   languageSelectionComplete: false,
   screen: 'mode_selection',
-  entries: [],
+  localSets: [createDefaultLocalSet()],
+  activeLocalSetId: DEFAULT_LOCAL_SET_ID,
   numberOfItems: NUMBER_OF_ITEMS_DEFAULT,
   simulationMode: false,
   simulationDate: null,
@@ -178,6 +216,92 @@ function normalizeStudyEntry(entry: StudyEntry, now: number): StudyEntry {
       level: typeof entry.target.level === 'number' ? entry.target.level : 0,
     },
   };
+}
+
+function toStudyEntryFromItem(item: StudyItem, now: number): StudyEntry {
+  if (item.type !== 'vocab') {
+    return {
+      id: item.id,
+      itemType: 'vocab',
+      description: item.description,
+      hints: item.hints,
+      source: toStudySide('source', '', false, 0, now, 0),
+      target: toStudySide('target', '', false, 0, now, 0),
+    };
+  }
+
+  return {
+    id: item.id,
+    itemType: item.type,
+    description: item.description,
+    hints: item.hints,
+    source: toStudySide('source', item.source, false, 0, now, 0),
+    target: {
+      ...toStudySide('target', item.target, false, 0, now, 0),
+      acceptedAnswers: item.acceptedAnswers,
+    },
+  };
+}
+
+function toStudyItemFromEntry(entry: StudyEntry): StudyItem {
+  return {
+    id: entry.id,
+    type: 'vocab',
+    source: entry.source.text,
+    target: entry.target.text,
+    description: entry.description,
+    hints: entry.hints,
+    acceptedAnswers: entry.target.acceptedAnswers,
+  };
+}
+
+function toLocalStudySetFromRemote(set: StudySet, importedFrom?: string): LocalStudySet {
+  const now = Date.now();
+  const entries = set.items.map((item) => toStudyEntryFromItem(item, startOfToday()));
+
+  return {
+    ...set,
+    importedFrom,
+    importedAt: now,
+    entries,
+    numberOfItems: set.items.length,
+  };
+}
+
+function getActiveLocalSet(state: AppState): LocalStudySet | null {
+  const activeId = state.activeLocalSetId;
+  const fallback = state.localSets[0] ?? null;
+
+  if (!activeId) {
+    return fallback;
+  }
+
+  return state.localSets.find((set) => set.id === activeId) ?? fallback;
+}
+
+function getActiveSetEntries(state: AppState): StudyEntry[] {
+  return getActiveLocalSet(state)?.entries ?? [];
+}
+
+function getDueCountForEntries(entries: StudyEntry[]): number {
+  return getDueSourceToTarget(entries).length + getDueTargetToSource(entries).length;
+}
+
+function getNextSetIdWithDueEntries(
+  state: AppState,
+  preferredSetId: string | null | undefined,
+): string | null {
+  if (preferredSetId) {
+    const preferred = state.localSets.find((set) => set.id === preferredSetId);
+
+    if (preferred && getDueCountForEntries(preferred.entries) > 0) {
+      return preferred.id;
+    }
+  }
+
+  const firstWithDue = state.localSets.find((set) => getDueCountForEntries(set.entries) > 0);
+
+  return firstWithDue?.id ?? null;
 }
 
 function applyClockFromState(s: AppState): void {
@@ -217,16 +341,29 @@ function loadState(): AppState {
       return state;
     }
 
-    const rawEntries = appState.entries ?? [];
     const now = startOfToday();
+    const rawLocalSets = Array.isArray(appState.localSets) ? appState.localSets : [];
 
-    const entries: StudyEntry[] = rawEntries.map((entry) => normalizeStudyEntry(entry, now));
+    const localSets: LocalStudySet[] =
+      rawLocalSets.length > 0
+        ? rawLocalSets.map((set) => ({
+            ...set,
+            entries: (set.entries ?? []).map((entry) => normalizeStudyEntry(entry, now)),
+            numberOfItems: Array.isArray(set.items) ? set.items.length : (set.numberOfItems ?? 0),
+            importedAt: typeof set.importedAt === 'number' ? set.importedAt : Date.now(),
+          }))
+        : [createDefaultLocalSet()];
+
+    const activeLocalSetId = localSets.some((set) => set.id === appState.activeLocalSetId)
+      ? (appState.activeLocalSetId ?? localSets[0].id)
+      : localSets[0].id;
 
     const state = {
       ...defaultState,
       ...appState,
       version: SETTINGS_VERSION,
-      entries,
+      localSets,
+      activeLocalSetId,
       appLocale: appState.appLocale ?? null,
       numberOfItems:
         typeof appState.numberOfItems === 'number'
@@ -277,6 +414,34 @@ function createStore() {
     });
   };
 
+  const getActiveEntries = (): StudyEntry[] => getActiveSetEntries(state());
+  const getLocalSets = (): LocalStudySet[] => state().localSets;
+  const getActiveLocalStudySet = (): LocalStudySet | null => getActiveLocalSet(state());
+
+  const getDueCountForLocalSet = (setId: string): number => {
+    const set = state().localSets.find((entry) => entry.id === setId);
+
+    if (!set) {
+      return 0;
+    }
+
+    return getDueCountForEntries(set.entries);
+  };
+
+  const getNextSetIdWithDueItems = (
+    preferredSetId: string | null = state().activeLocalSetId,
+  ): string | null => getNextSetIdWithDueEntries(state(), preferredSetId);
+
+  const selectSetForQuickTest = (): string | null => {
+    const nextSetId = getNextSetIdWithDueItems();
+
+    if (nextSetId) {
+      setActiveLocalSet(nextSetId);
+    }
+
+    return nextSetId;
+  };
+
   const clearTestSession = (): void => {
     setTestSession(null);
   };
@@ -314,8 +479,91 @@ function createStore() {
     persist((prev) => ({ ...prev, screen: 'mode_selection' }));
   };
 
+  const setActiveLocalSet = (setId: string): void => {
+    persist((prev) => {
+      const exists = prev.localSets.some((set) => set.id === setId);
+
+      if (!exists) {
+        return prev;
+      }
+
+      return { ...prev, activeLocalSetId: setId };
+    });
+  };
+
+  const importStudySet = (set: StudySet, importedFrom?: string): void => {
+    persist((prev) => {
+      const localSet = toLocalStudySetFromRemote(set, importedFrom);
+      const existingIndex = prev.localSets.findIndex((entry) => entry.id === localSet.id);
+
+      if (existingIndex === -1) {
+        return {
+          ...prev,
+          localSets: [...prev.localSets, localSet],
+          activeLocalSetId: localSet.id,
+        };
+      }
+
+      return {
+        ...prev,
+        localSets: prev.localSets.map((entry, index) =>
+          index === existingIndex ? localSet : entry,
+        ),
+        activeLocalSetId: localSet.id,
+      };
+    });
+  };
+
+  const createLocalStudySet = (input: CreateLocalStudySetInput): void => {
+    const now = Date.now();
+    const normalizedName = input.name.trim();
+
+    if (!normalizedName || input.items.length === 0) {
+      return;
+    }
+
+    const set: StudySet = {
+      id: `local-studyset-${generateId()}`,
+      name: normalizedName,
+      author: 'local',
+      mainLanguage: state().mainLanguage ?? 'en',
+      targetLanguage: state().targetLanguage ?? 'ja',
+      tags: input.tags,
+      description: input.description.trim(),
+      level: input.level,
+      numberOfItems: input.items.length,
+      type: 'vocab',
+      createdAt: now,
+      updatedAt: now,
+      items: input.items,
+    };
+
+    importStudySet(set, 'local:create');
+  };
+
   const setEntries = (entries: StudyEntry[]): void => {
-    persist((prev) => ({ ...prev, entries }));
+    persist((prev) => {
+      const active = getActiveLocalSet(prev);
+
+      if (!active) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        localSets: prev.localSets.map((set) =>
+          set.id === active.id
+            ? {
+                ...set,
+                entries,
+                items: entries.map(toStudyItemFromEntry),
+                numberOfItems: entries.length,
+                updatedAt: Date.now(),
+              }
+            : set,
+        ),
+      };
+    });
   };
 
   const addEntry = (sourceText: string, targetText: string): void => {
@@ -328,17 +576,11 @@ function createStore() {
       target: toStudySide('target', targetText.trim(), false, 0, now, 0),
     };
 
-    persist((prev) => ({
-      ...prev,
-      entries: [...prev.entries, entry],
-    }));
+    setEntries([...getActiveSetEntries(state()), entry]);
   };
 
   const removeEntry = (id: string): void => {
-    persist((prev) => ({
-      ...prev,
-      entries: prev.entries.filter((e) => e.id !== id),
-    }));
+    setEntries(getActiveSetEntries(state()).filter((entry) => entry.id !== id));
   };
 
   const updateEntry = (id: string, sourceText: string, targetText: string): void => {
@@ -349,82 +591,87 @@ function createStore() {
       return;
     }
 
-    persist((prev) => ({
-      ...prev,
-      entries: prev.entries.map((e) =>
-        e.id !== id
-          ? e
+    setEntries(
+      getActiveSetEntries(state()).map((entry) =>
+        entry.id !== id
+          ? entry
           : {
-              ...e,
-              source: { ...e.source, text: s },
-              target: { ...e.target, text: t },
+              ...entry,
+              source: { ...entry.source, text: s },
+              target: { ...entry.target, text: t },
             },
       ),
-    }));
+    );
   };
 
   const clearEntries = (): void => {
-    persist((prev) => ({ ...prev, entries: [] }));
+    setEntries([]);
   };
 
   const recordAnswer = (id: string, wasCorrect: boolean, direction: QuizDirection): void => {
     const isSourceToTarget = direction === 'source_to_target';
 
-    persist((prev) => ({
-      ...prev,
-      entries: prev.entries.map((e) => {
-        if (e.id !== id) {
-          return e;
+    setEntries(
+      getActiveSetEntries(state()).map((entry) => {
+        if (entry.id !== id) {
+          return entry;
         }
 
         if (isSourceToTarget) {
-          const nextLevel = wasCorrect ? Math.min(e.source.level + 1, REVIEW_MAX_LEVEL) : 0;
+          const nextLevel = wasCorrect ? Math.min(entry.source.level + 1, REVIEW_MAX_LEVEL) : 0;
 
           const intervalDays = REVIEW_INTERVAL_DAYS[nextLevel];
 
           return {
-            ...e,
+            ...entry,
             source: {
-              ...e.source,
+              ...entry.source,
               correct: wasCorrect,
-              errorCount: wasCorrect ? e.source.errorCount : e.source.errorCount + 1,
+              errorCount: wasCorrect ? entry.source.errorCount : entry.source.errorCount + 1,
               level: nextLevel,
               nextReviewAt: addDaysFromToday(intervalDays),
             },
           };
         }
 
-        const nextLevel = wasCorrect ? Math.min(e.target.level + 1, REVIEW_MAX_LEVEL) : 0;
+        const nextLevel = wasCorrect ? Math.min(entry.target.level + 1, REVIEW_MAX_LEVEL) : 0;
 
         const intervalDays = REVIEW_INTERVAL_DAYS[nextLevel];
 
         return {
-          ...e,
+          ...entry,
           target: {
-            ...e.target,
+            ...entry.target,
             correct: wasCorrect,
-            errorCount: wasCorrect ? e.target.errorCount : e.target.errorCount + 1,
+            errorCount: wasCorrect ? entry.target.errorCount : entry.target.errorCount + 1,
             level: nextLevel,
             nextReviewAt: addDaysFromToday(intervalDays),
           },
         };
       }),
-    }));
+    );
   };
 
   const setEntryCorrect = (id: string, correct: boolean): void => {
-    persist((prev) => ({
-      ...prev,
-      entries: prev.entries.map((e) =>
-        e.id !== id
-          ? e
+    setEntries(
+      getActiveSetEntries(state()).map((entry) =>
+        entry.id !== id
+          ? entry
           : {
-              ...e,
-              source: { ...e.source, correct, errorCount: correct ? 0 : e.source.errorCount },
-              target: { ...e.target, correct, errorCount: correct ? 0 : e.target.errorCount },
+              ...entry,
+              source: {
+                ...entry.source,
+                correct,
+                errorCount: correct ? 0 : entry.source.errorCount,
+              },
+              target: {
+                ...entry.target,
+                correct,
+                errorCount: correct ? 0 : entry.target.errorCount,
+              },
             },
       ),
-    }));
+    );
   };
 
   const setNumberOfItems = (value: number): void => {
@@ -480,9 +727,21 @@ function createStore() {
   /** Apply NIP-78 sync payload from relays (pull). Merges payload into state and persists. */
   const applySyncPayload = (payload: SyncPayload): void => {
     const now = startOfToday();
-    const rawEntries = payload.entries ?? [];
+    const rawLocalSets = payload.localSets ?? [];
 
-    const entries: StudyEntry[] = rawEntries.map((entry) => normalizeStudyEntry(entry, now));
+    const localSets: LocalStudySet[] =
+      rawLocalSets.length > 0
+        ? rawLocalSets.map((set) => ({
+            ...set,
+            entries: (set.entries ?? []).map((entry) => normalizeStudyEntry(entry, now)),
+            numberOfItems: Array.isArray(set.items) ? set.items.length : (set.numberOfItems ?? 0),
+            importedAt: typeof set.importedAt === 'number' ? set.importedAt : Date.now(),
+          }))
+        : [createDefaultLocalSet()];
+
+    const activeLocalSetId = localSets.some((set) => set.id === payload.activeLocalSetId)
+      ? (payload.activeLocalSetId ?? localSets[0].id)
+      : localSets[0].id;
 
     setState((prev) => {
       const next: AppState = {
@@ -492,7 +751,8 @@ function createStore() {
         targetLanguage: payload.targetLanguage ?? prev.targetLanguage,
         languageSelectionComplete:
           payload.languageSelectionComplete ?? prev.languageSelectionComplete,
-        entries,
+        localSets,
+        activeLocalSetId,
         numberOfItems:
           typeof payload.numberOfItems === 'number'
             ? Math.min(NUMBER_OF_ITEMS_MAX, Math.max(NUMBER_OF_ITEMS_MIN, payload.numberOfItems))
@@ -517,6 +777,15 @@ function createStore() {
     completeLanguageSelection,
     setScreen,
     goToModeSelection,
+    getLocalSets,
+    getActiveLocalStudySet,
+    getDueCountForLocalSet,
+    getNextSetIdWithDueItems,
+    selectSetForQuickTest,
+    setActiveLocalSet,
+    importStudySet,
+    createLocalStudySet,
+    getActiveEntries,
     setEntries,
     addEntry,
     removeEntry,

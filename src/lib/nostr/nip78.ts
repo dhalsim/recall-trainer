@@ -25,7 +25,8 @@ export function stateToSyncPayload(state: AppState): Nip78SyncPayload {
     mainLanguage: state.mainLanguage,
     targetLanguage: state.targetLanguage,
     languageSelectionComplete: state.languageSelectionComplete,
-    entries: state.entries,
+    localSets: state.localSets,
+    activeLocalSetId: state.activeLocalSetId,
     numberOfItems: state.numberOfItems,
   };
 }

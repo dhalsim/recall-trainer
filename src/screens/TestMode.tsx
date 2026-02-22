@@ -28,6 +28,11 @@ interface RoundResult {
 }
 
 export function TestMode() {
+  if (store.testSession() == null) {
+    // Smart /test routing: active set with due items, else first set with due items.
+    store.selectSetForQuickTest();
+  }
+
   const [sourceToTarget, setSourceToTarget] = createSignal<StudyEntry[]>([]);
   const [targetToSource, setTargetToSource] = createSignal<StudyEntry[]>([]);
   const [direction, setDirection] = createSignal<Direction>('source_to_target');
@@ -45,7 +50,7 @@ export function TestMode() {
 
   let answerInputRef: HTMLInputElement | undefined;
 
-  const entries = () => store.state().entries;
+  const entries = () => store.getActiveEntries();
   const numberOfItems = () => store.state().numberOfItems;
   const entriesToPractice = () => getEntriesWithDueSide(entries());
   const hasNoEntryToPractice = () => entriesToPractice().length === 0;
@@ -73,7 +78,7 @@ export function TestMode() {
   });
 
   const restoreSession = (snapshot: TestSessionSnapshot): void => {
-    const entriesById = Object.fromEntries(store.state().entries.map((e) => [e.id, e]));
+    const entriesById = Object.fromEntries(store.getActiveEntries().map((e) => [e.id, e]));
 
     const byIds = (ids: string[]) =>
       ids.map((id) => entriesById[id]).filter((e): e is StudyEntry => e != null);
@@ -383,7 +388,16 @@ export function TestMode() {
             ← {t('Back')}
           </button>
           <h1 class="text-2xl font-bold text-slate-900">Recall Trainer</h1>
-          <p class="text-slate-600">{t('No vocabulary entries yet. Add some words first.')}</p>
+          <p class="text-slate-600">
+            {t('No vocabulary entries yet. Create or edit a study set first.')}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/study-sets/my')}
+            class="w-full rounded-lg border border-slate-300 px-4 py-3 font-medium text-slate-700 transition-colors hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2"
+          >
+            {t('My Study Sets')}
+          </button>
         </div>
       }
     >
@@ -398,18 +412,15 @@ export function TestMode() {
               ← {t('Back')}
             </button>
             <h1 class="text-2xl font-bold text-slate-900">Recall Trainer</h1>
-            <p class="text-slate-600">
-              {t('No reviews due today. Add more words or practice again later.')}
-            </p>
+            <p class="text-slate-600">{t('No reviews due today in your current sets.')}</p>
             <button
               type="button"
               onClick={() => {
-                store.setScreen('word_entry');
-                navigate('/words');
+                navigate('/study-sets/my');
               }}
               class="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
-              {t('Enter words I struggle with')}
+              {t('Go to My Study Sets')}
             </button>
           </div>
         </Match>

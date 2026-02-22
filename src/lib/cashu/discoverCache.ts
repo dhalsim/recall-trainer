@@ -26,7 +26,7 @@ const { error } = logger();
 
 export type DiscoverMintData = {
   url: string;
-  mintPubkey: string;
+  pubkey: string;
   nuts: string[];
   network: string;
   eventId: string;
@@ -48,7 +48,7 @@ export type DiscoverStore = {
 type StoredMintEvent = {
   eventId: string;
   url: string;
-  mintPubkey: string;
+  pubkey: string;
   nuts: string[];
   network: string;
   created_at: number;
@@ -93,7 +93,7 @@ export function addMintEvents(db: IDBDatabase, events: Event[]): Promise<void> {
         const record: StoredMintEvent = {
           eventId: parsed.eventId,
           url: parsed.url,
-          mintPubkey: parsed.mintPubkey,
+          pubkey: parsed.pubkey,
           nuts: parsed.nuts,
           network: parsed.network,
           created_at: ev.created_at,
@@ -215,7 +215,7 @@ export function aggregateFromDB(db: IDBDatabase): Promise<Record<string, Discove
 
       result[url] = {
         url,
-        mintPubkey: m.mintPubkey,
+        pubkey: m.pubkey,
         nuts: m.nuts,
         network: m.network,
         eventId: m.eventId,

@@ -44,21 +44,9 @@ export function Mint(props: MintProps) {
             <span class="truncate font-mono text-xs text-slate-700" title={props.mintUrl}>
               {truncateUrl(props.mintUrl, 32)}
             </span>
-            <div class="flex flex-col items-end">
-              <span class="text-sm font-semibold text-slate-900">
-                {props.balance} {t('sats')}
-              </span>
-              <Show when={props.onRemove}>
-                <button
-                  type="button"
-                  onClick={() => props.onRemove?.()}
-                  aria-label={t('Remove')}
-                  class="rounded px-2 py-1 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-error-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  ✕
-                </button>
-              </Show>
-            </div>
+            <span class="text-sm font-semibold text-slate-900">
+              {props.balance} {t('sats')}
+            </span>
           </div>
           <div class="mt-2 flex flex-wrap items-center gap-2">
             <button
@@ -86,6 +74,15 @@ export function Mint(props: MintProps) {
             >
               {t('History')}
             </button>
+            <Show when={props.onRemove}>
+              <button
+                type="button"
+                onClick={() => props.onRemove?.()}
+                class="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-400"
+              >
+                {t('Delete')}
+              </button>
+            </Show>
           </div>
         </li>
       </Show>

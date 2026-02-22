@@ -12,7 +12,7 @@ const { error: logError } = logger();
 
 export type Nip87MintInfo = {
   url: string;
-  mintPubkey: string;
+  pubkey: string;
   nuts: string[];
   network: string;
   eventId: string;
@@ -119,7 +119,7 @@ export function parseMintInfoEvent(ev: Event): Nip87MintInfo | null {
     return null;
   }
 
-  const mintPubkey = getTag(ev, 'd') ?? '';
+  const pubkey = ev.pubkey;
   const nutsTag = getTag(ev, 'nuts');
 
   const nuts = nutsTag
@@ -133,7 +133,7 @@ export function parseMintInfoEvent(ev: Event): Nip87MintInfo | null {
 
   return {
     url,
-    mintPubkey,
+    pubkey,
     nuts,
     network,
     eventId: ev.id,

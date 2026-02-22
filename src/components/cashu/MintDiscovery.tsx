@@ -38,7 +38,7 @@ export function MintDiscovery(props: MintDiscoveryProps) {
 
       for (const url of urls) {
         const m = mints[url];
-        allPubkeys.add(m.mintPubkey);
+        allPubkeys.add(m.pubkey);
 
         for (const r of m.reviews) {
           allPubkeys.add(r.author);
@@ -71,6 +71,17 @@ export function MintDiscovery(props: MintDiscoveryProps) {
     const mints = props.store.mints;
 
     return urls.sort((a, b) => {
+      const unreachableA = Boolean(mints[a].mintInfoError);
+      const unreachableB = Boolean(mints[b].mintInfoError);
+
+      if (unreachableA && !unreachableB) {
+        return 1;
+      }
+
+      if (!unreachableA && unreachableB) {
+        return -1;
+      }
+
       const sa = scores.get(a);
       const sb = scores.get(b);
       const hasWotA = sa != null && sa.score != null;
@@ -170,7 +181,7 @@ export function MintDiscovery(props: MintDiscoveryProps) {
             <For each={sortedMintUrls()}>
               {(url) => {
                 const mint = () => props.store.mints[url];
-                const mintDepth = () => depthsMap()?.get(mint().mintPubkey) ?? null;
+                const mintDepth = () => depthsMap()?.get(mint().pubkey) ?? null;
                 const wotLabel = () => formatWotScore(mint());
 
                 return (
@@ -209,39 +220,43 @@ export function MintDiscovery(props: MintDiscoveryProps) {
                       {url}
                     </p>
                     <div class="mt-2 flex flex-wrap items-center gap-3">
-                      <Show
-                        when={wotLabel()}
-                        fallback={
-                          <span class="text-xs text-slate-600">
-                            {t('Rating')}:{' '}
-                            {mint().avgRating != null ? mint().avgRating!.toFixed(1) : '—'}
-                          </span>
-                        }
-                      >
-                        <span
-                          class="text-xs font-semibold text-indigo-700"
-                          title={t('WoT score: weighted rating from trusted reviewers')}
+                      <div class="flex min-w-0 flex-wrap items-center gap-3">
+                        <Show
+                          when={wotLabel()}
+                          fallback={
+                            <span class="text-xs text-slate-600">
+                              {t('Rating')}:{' '}
+                              {mint().avgRating != null ? mint().avgRating!.toFixed(1) : '—'}
+                            </span>
+                          }
                         >
-                          {t('WoT score')}: {wotLabel()}
+                          <span
+                            class="text-xs font-semibold text-indigo-700"
+                            title={t('WoT score: weighted rating from trusted reviewers')}
+                          >
+                            {t('WoT score')}: {wotLabel()}
+                          </span>
+                        </Show>
+                        <span class="text-xs text-slate-600">
+                          {t('Reviews')}: {mint().reviewCount}
                         </span>
-                      </Show>
-                      <span class="text-xs text-slate-600">
-                        {t('Reviews')}: {mint().reviewCount}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedMintUrl(url)}
-                        class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                      >
-                        {t('Details')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => props.onAddMint(url)}
-                        class="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {t('Add to wallet')}
-                      </button>
+                      </div>
+                      <div class="ml-auto flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMintUrl(url)}
+                          class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                        >
+                          {t('Details')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => props.onAddMint(url)}
+                          class="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          {t('Add to wallet')}
+                        </button>
+                      </div>
                     </div>
                   </li>
                 );

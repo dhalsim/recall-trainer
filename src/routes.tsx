@@ -5,6 +5,9 @@ import { Show } from 'solid-js';
 import { AppLayout } from './components/AppLayout';
 import { LanguageSelection } from './screens/LanguageSelection';
 import { ModeSelection } from './screens/ModeSelection';
+import { MyStudySets } from './screens/MyStudySets';
+import { StudySetCreate } from './screens/StudySetCreate';
+import { StudySetsDiscover } from './screens/StudySetsDiscover';
 import { TestMode } from './screens/TestMode';
 import { WordEntry } from './screens/WordEntry';
 import { store } from './store';
@@ -54,6 +57,30 @@ export function TestRoute() {
   return (
     <RequireLanguage>
       <TestMode />
+    </RequireLanguage>
+  );
+}
+
+export function StudySetsDiscoverRoute() {
+  return (
+    <RequireLanguage>
+      <StudySetsDiscover />
+    </RequireLanguage>
+  );
+}
+
+export function MyStudySetsRoute() {
+  return (
+    <RequireLanguage>
+      <MyStudySets />
+    </RequireLanguage>
+  );
+}
+
+export function StudySetCreateRoute() {
+  return (
+    <RequireLanguage>
+      <StudySetCreate />
     </RequireLanguage>
   );
 }

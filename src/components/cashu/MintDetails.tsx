@@ -1,3 +1,4 @@
+import { nip19 } from 'nostr-tools';
 import { createMemo, createResource, For, onMount, Show } from 'solid-js';
 
 import { useNostrAuth } from '../../contexts/NostrAuthContext';
@@ -9,6 +10,7 @@ import { getDisplayName } from '../../lib/profile/profileParse';
 import { readSyncMeta } from '../../lib/syncMeta';
 import { getWotDepths } from '../../lib/wot/wotScore';
 import { logger } from '../../utils/logger';
+import { PROFILE_RELAYS } from '../../utils/nostr';
 import { ProfileAvatar } from '../profile/ProfileAvatar';
 
 import { truncateUrl } from './utils';
@@ -20,6 +22,74 @@ interface MintDetailsProps {
 }
 
 const { error: logError } = logger();
+const NUTS_DOCS_BASE_URL = 'https://github.com/cashubtc/nuts/blob/main';
+
+function getNutDocUrl(nutNumber: number): string {
+  const padded = String(nutNumber).padStart(2, '0');
+
+  return `${NUTS_DOCS_BASE_URL}/${padded}.md`;
+}
+
+function isHexNostrPubkey(value: string): boolean {
+  return /^[0-9a-f]{64}$/i.test(value);
+}
+
+function decodeNostrPubkey(value: string): string | null {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (isHexNostrPubkey(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  try {
+    const decoded = nip19.decode(trimmed);
+
+    if (decoded.type === 'npub') {
+      return decoded.data;
+    }
+
+    if (decoded.type === 'nprofile') {
+      return decoded.data.pubkey;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function getNostrContactPubkey(mintInfo: DiscoverMintData['mintInfo']): string | null {
+  if (!mintInfo || !Array.isArray(mintInfo.contact)) {
+    return null;
+  }
+
+  for (const contact of mintInfo.contact) {
+    if (!contact || typeof contact !== 'object') {
+      continue;
+    }
+
+    const method = 'method' in contact ? contact.method : undefined;
+    const info = 'info' in contact ? contact.info : undefined;
+
+    if (typeof method !== 'string' || typeof info !== 'string') {
+      continue;
+    }
+
+    if (method.toLowerCase() === 'nostr') {
+      const pubkey = decodeNostrPubkey(info);
+
+      if (pubkey) {
+        return pubkey;
+      }
+    }
+  }
+
+  return null;
+}
 
 function formatReviewDate(created_at: number): string {
   try {
@@ -33,14 +103,6 @@ function formatReviewDate(created_at: number): string {
 
     return '';
   }
-}
-
-function truncatePubkey(pubkey: string, len = 12): string {
-  if (pubkey.length <= len) {
-    return pubkey;
-  }
-
-  return pubkey.slice(0, 6) + '…' + pubkey.slice(-4);
 }
 
 export function depthLabel(depth: number): string {
@@ -63,6 +125,53 @@ export function MintDetails(props: MintDetailsProps) {
   const reviews = () => mint().reviews;
   const rootPubkey = () => auth.pubkey() ?? null;
 
+  const resolvedMintNostrPubkey = createMemo(() => {
+    const fromContact = getNostrContactPubkey(info());
+
+    if (fromContact) {
+      return fromContact;
+    }
+
+    const fromMintInfoPubkey = decodeNostrPubkey(info()?.pubkey ?? '');
+
+    if (fromMintInfoPubkey) {
+      return fromMintInfoPubkey;
+    }
+
+    return decodeNostrPubkey(mint().pubkey);
+  });
+
+  const mintProfileLink = createMemo(() => {
+    const pubkey = resolvedMintNostrPubkey();
+
+    if (!pubkey) {
+      return null;
+    }
+
+    const profile = getProfile(pubkey);
+    const relays = profile?.relays?.length ? profile.relays : PROFILE_RELAYS;
+
+    try {
+      const nprofile = nip19.nprofileEncode({ pubkey, relays });
+
+      return `https://njump.me/${nprofile}`;
+    } catch {
+      return `https://njump.me/${pubkey}`;
+    }
+  });
+
+  const supportedNuts = createMemo(() => {
+    const nuts = info()?.nuts;
+
+    if (!nuts || typeof nuts !== 'object') {
+      return [];
+    }
+
+    return Object.keys(nuts)
+      .map((key) => Number.parseInt(key, 10))
+      .sort((a, b) => a - b);
+  });
+
   const [depthsMap] = createResource(
     () => {
       const root = rootPubkey();
@@ -72,7 +181,14 @@ export function MintDetails(props: MintDetailsProps) {
       }
 
       const revs = reviews();
-      const authors = [...new Set([mint().mintPubkey, ...revs.map((r) => r.author)])];
+
+      const authors = [
+        ...new Set(
+          [resolvedMintNostrPubkey(), ...revs.map((r) => r.author)].filter(
+            (value): value is string => Boolean(value),
+          ),
+        ),
+      ];
 
       return { root, authors } as const;
     },
@@ -108,9 +224,15 @@ export function MintDetails(props: MintDetailsProps) {
   });
 
   onMount(() => {
-    const authors = [mint().mintPubkey, ...reviews().map((r) => r.author)];
+    const authors = [
+      ...new Set(
+        [resolvedMintNostrPubkey(), ...reviews().map((r) => r.author)].filter(
+          (value): value is string => Boolean(value),
+        ),
+      ),
+    ];
 
-    prefetchProfiles([...new Set(authors)]);
+    prefetchProfiles(authors);
   });
 
   return (
@@ -124,8 +246,8 @@ export function MintDetails(props: MintDetailsProps) {
       </button>
 
       {/* Mint info (NUT-06) */}
-      <section class="rounded-lg border border-slate-200 bg-slate-50 p-4">
-        <h3 class="text-sm font-semibold text-slate-800">{t('Mint info')}</h3>
+      <section class="rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm">
+        <h3 class="text-sm font-semibold text-slate-800">{t('Mint details')}</h3>
         <Show when={mint().mintInfoError}>
           {(err) => (
             <p class="mt-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -140,39 +262,102 @@ export function MintDetails(props: MintDetailsProps) {
             <img
               src={info()!.icon_url!}
               alt=""
-              class="h-12 w-12 shrink-0 rounded-lg object-contain"
+              class="h-12 w-12 shrink-0 rounded-xl border border-slate-200 bg-white p-1 object-contain"
             />
           </Show>
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-2">
-              <p class="font-medium text-slate-900">
+              <p class="text-base font-semibold text-slate-900">
                 {info()?.name ?? truncateUrl(mint().url, 48)}
               </p>
-              <Show when={depthsMap()?.get(mint().mintPubkey) != null}>
+              <Show
+                when={
+                  resolvedMintNostrPubkey() && depthsMap()?.get(resolvedMintNostrPubkey()!) != null
+                }
+              >
                 <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                  {depthLabel(depthsMap()!.get(mint().mintPubkey)!)}
+                  {depthLabel(depthsMap()!.get(resolvedMintNostrPubkey()!)!)}
                 </span>
               </Show>
             </div>
-            <p class="mt-1 font-mono text-xs text-slate-500" title={mint().url}>
-              {truncateUrl(mint().url, 56)}
-            </p>
-            <div class="mt-1 flex items-center gap-2">
-              <p class="font-mono text-xs text-slate-500" title={mint().mintPubkey}>
-                {t('Mint pubkey')}: {truncatePubkey(mint().mintPubkey, 20)}
-              </p>
-              <ProfileAvatar pubkey={mint().mintPubkey} size="xs" disablePopup />
+            <div class="mt-3 rounded-lg border border-slate-200 bg-white/80 p-3">
+              <div class="space-y-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    URL
+                  </span>
+                  <span class="min-w-0 truncate rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-700">
+                    {truncateUrl(mint().url, 56)}
+                  </span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    {t('Mint pubkey')}
+                  </span>
+                  <div class="flex min-w-0 flex-1 items-center gap-2">
+                    <Show
+                      when={resolvedMintNostrPubkey()}
+                      fallback={
+                        <span class="truncate font-mono text-xs text-slate-500">
+                          {mint().pubkey || '—'}
+                        </span>
+                      }
+                    >
+                      <ProfileAvatar pubkey={resolvedMintNostrPubkey()!} size="lg" />
+                      <a
+                        href={mintProfileLink() ?? `https://njump.me/${resolvedMintNostrPubkey()!}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="truncate font-mono text-xs text-indigo-700 hover:underline"
+                        title={resolvedMintNostrPubkey()!}
+                      >
+                        {getDisplayName(
+                          getProfile(resolvedMintNostrPubkey()!),
+                          resolvedMintNostrPubkey()!,
+                        )}
+                      </a>
+                    </Show>
+                  </div>
+                </div>
+                <Show when={mint().network}>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      {t('Network')}
+                    </span>
+                    <span class="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                      {mint().network}
+                    </span>
+                  </div>
+                </Show>
+                <Show when={supportedNuts().length > 0}>
+                  <div class="flex flex-wrap items-start gap-2">
+                    <span class="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      {t('Supported NUTs')}
+                    </span>
+                    <div class="flex flex-wrap gap-1.5">
+                      <For each={supportedNuts()}>
+                        {(nut) => (
+                          <a
+                            href={getNutDocUrl(nut)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:underline"
+                            title={t('Open NUT documentation')}
+                          >
+                            NUTS-{nut}
+                          </a>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+                </Show>
+              </div>
             </div>
-            <Show when={mint().network}>
-              <p class="mt-1 text-xs text-slate-600">
-                {t('Network')}: {mint().network}
-              </p>
-            </Show>
             <Show when={info()?.description}>
-              <p class="mt-2 text-sm text-slate-600">{info()!.description}</p>
+              <p class="mt-3 text-sm text-slate-700">{info()!.description}</p>
             </Show>
             <Show when={info()?.description_long}>
-              <p class="mt-1 text-xs text-slate-500">{info()!.description_long}</p>
+              <p class="mt-1 text-xs leading-relaxed text-slate-500">{info()!.description_long}</p>
             </Show>
           </div>
         </div>

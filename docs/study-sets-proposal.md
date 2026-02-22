@@ -1,28 +1,16 @@
-# Word Sets Proposal (Nostr-based)
-
-## Naming
-
-`WordSets` is clear and product-friendly. If you want alternatives that feel more learning-oriented:
-
-- `Vocab Packs`
-- `Topic Decks`
-- `Recall Packs`
-
-Recommendation: keep `WordSets` in code and use a UI label like **Topic Decks** if you want a more familiar learner term.
-
----
+# Study Sets Proposal (Nostr-based)
 
 ## Product Goal
 
-A Word Set is a themed vocabulary bundle created by an author and discoverable by users. Users can filter by language pair, tags, and level, then import free sets.
+A Study Set is a themed study-item bundle created by an author and discoverable by users. Users can filter by language pair, tags, and level, then import free sets.
 
-Each Word Set is represented as an **addressable event** (`30000 <= kind < 40000`) with a unique `d` tag per set.
+Each Study Set is represented as an **addressable event** (`30000 <= kind < 40000`) with a unique `d` tag per set.
 
 ---
 
 ## Core Data Model
 
-### WordSet
+### StudySet
 
 - `id`: string (derived from event address)
 - `name`: string
@@ -53,18 +41,18 @@ Each Word Set is represented as an **addressable event** (`30000 <= kind < 40000
 
 ### Kind model
 
-Word Sets use **addressable events** (`30000 <= kind < 40000`) so each set has its own `d` tag.
+Study Sets use **addressable events** (`30000 <= kind < 40000`) so each set has its own `d` tag.
 
 ### Public set metadata event
 
 - Kind: app-specific addressable kind (example: `39001`)
-- Address key: `d` tag, e.g. `wordset:<slug-or-uuid>`
+- Address key: `d` tag, e.g. `studyset:<slug-or-uuid>`
 - Content: JSON metadata
 - For free sets: may include full `content` directly
 
 Suggested tags:
 
-- `["d", "wordset:<id>"]`
+- `["d", "studyset:<id>"]`
 - `["title", "<name>"]`
 - `["main_lang", "<code>"]`
 - `["target_lang", "<code>"]`
@@ -75,7 +63,7 @@ Suggested tags:
 
 ## Reviews
 
-Use NIP-22 comments (`kind:1111`) linked to the Word Set root event:
+Use NIP-22 comments (`kind:1111`) linked to the Study Set root event:
 
 - Root scope tags (`A`/`E` + `K`)
 - Parent scope tags (`a`/`e` + `k`)
