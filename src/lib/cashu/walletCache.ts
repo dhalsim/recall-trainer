@@ -15,6 +15,7 @@ const { error } = logger();
 type CachedWallet = {
   walletContent: Nip60WalletContent;
   proofsByMint: Record<string, Proof[]>;
+  pendingProofsByMint: Record<string, Proof[]>;
 };
 
 function cacheKey(pubkey: string): string {
@@ -52,11 +53,15 @@ export function writeWalletCache(
   pubkey: string,
   walletContent: Nip60WalletContent,
   proofsByMint: Map<string, Proof[]>,
+  pendingProofsByMint?: Map<string, Proof[]>,
 ): void {
   try {
+    const pendingMap = pendingProofsByMint ?? new Map();
+
     const serializable: CachedWallet = {
       walletContent,
       proofsByMint: Object.fromEntries(proofsByMint),
+      pendingProofsByMint: Object.fromEntries(pendingMap),
     };
 
     localStorage.setItem(cacheKey(pubkey), JSON.stringify(serializable));
@@ -75,4 +80,62 @@ export function clearWalletCache(pubkey: string): void {
   } catch (err) {
     error('[walletCache] Failed to clear:', err);
   }
+}
+
+export function pendingProofsMapFromCache(cached: CachedWallet): Map<string, Proof[]> {
+  return new Map(Object.entries(cached.pendingProofsByMint ?? {}));
+}
+
+export function getPendingProofsForMint(pubkey: string, mintUrl: string): Proof[] {
+  const cached = readWalletCache(pubkey);
+
+  if (!cached) {
+    return [];
+  }
+
+  return cached.pendingProofsByMint?.[mintUrl] ?? [];
+}
+
+export function getAllPendingProofs(pubkey: string): Proof[] {
+  const cached = readWalletCache(pubkey);
+
+  if (!cached?.pendingProofsByMint) {
+    return [];
+  }
+
+  return Object.values(cached.pendingProofsByMint).flat();
+}
+
+export function addPendingProofs(pubkey: string, mintUrl: string, proofs: Proof[]): void {
+  const cached = readWalletCache(pubkey);
+
+  if (!cached) {
+    return;
+  }
+
+  const pending = cached.pendingProofsByMint ?? {};
+  const existing = pending[mintUrl] ?? [];
+  pending[mintUrl] = [...existing, ...proofs];
+
+  localStorage.setItem(
+    cacheKey(pubkey),
+    JSON.stringify({ ...cached, pendingProofsByMint: pending }),
+  );
+}
+
+export function removePendingProofs(pubkey: string, mintUrl: string, secrets: string[]): void {
+  const cached = readWalletCache(pubkey);
+
+  if (!cached?.pendingProofsByMint) {
+    return;
+  }
+
+  const pending = cached.pendingProofsByMint;
+  const existing = pending[mintUrl] ?? [];
+  pending[mintUrl] = existing.filter((p) => !secrets.includes(p.secret));
+
+  localStorage.setItem(
+    cacheKey(pubkey),
+    JSON.stringify({ ...cached, pendingProofsByMint: pending }),
+  );
 }

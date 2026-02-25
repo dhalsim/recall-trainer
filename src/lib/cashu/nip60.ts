@@ -4,6 +4,8 @@ import type { Event, EventTemplate, Filter } from 'nostr-tools';
 
 import { logger } from '../../utils/logger';
 import { pool } from '../../utils/nostr';
+import { getRelays } from '../nostr/nip65';
+import type { Nip65Relays } from '../nostr/nip65';
 
 /** NIP-60: Cashu wallet event (replaceable). Encrypted privkey + mints. */
 export const NUTZAP_WALLET_KIND = 17375;
@@ -14,6 +16,14 @@ export const NUTZAP_TOKEN_KIND = 7375;
 /** NIP-60 / NIP-61: Redemption / spending history (optional). */
 export const NUTZAP_REDEMPTION_KIND = 7376;
 const { error: logError } = logger();
+
+const DEFAULT_WRITE_RELAYS = ['wss://relay.damus.io', 'wss://relay.nostr.band', 'wss://nos.lol'];
+
+function getWriteRelays(pubkey: string): string[] {
+  const nip65 = getRelays(pubkey) as Nip65Relays | undefined;
+
+  return nip65?.writeRelays?.length ? nip65.writeRelays : DEFAULT_WRITE_RELAYS;
+}
 
 export type Nip60WalletContent = {
   privkey: string;
@@ -202,4 +212,64 @@ export function computeBalanceByMint(tokens: Nip60TokenContent[]): Map<string, n
   }
 
   return byMint;
+}
+
+export type TokenStatus = 'created' | 'destroyed';
+export type Direction = 'in' | 'out';
+
+// TODO: NOT USED
+export async function publishTokenStatusEvent(
+  direction: Direction,
+  amount: string,
+  unit: string,
+  eventRef: string,
+  status: TokenStatus,
+  pubkey: string,
+  signEvent: (template: EventTemplate) => Promise<Event>,
+  nip44Encrypt: (pubkey: string, plaintext: string) => Promise<string>,
+): Promise<string | null> {
+  try {
+    const content = JSON.stringify([
+      ['direction', direction],
+      ['amount', amount],
+      ['unit', unit],
+      ['e', eventRef, '', status],
+    ]);
+
+    const encryptedContent = await nip44Encrypt(pubkey, content);
+
+    const template: EventTemplate = {
+      kind: 7376,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [],
+      content: encryptedContent,
+    };
+
+    const signed = await signEvent(template);
+    const eventId = signed.id;
+
+    const writeRelays = getWriteRelays(pubkey);
+    pool.publish(writeRelays, signed);
+
+    return eventId;
+  } catch (err) {
+    logError('[nip60] Failed to publish token status event:', err);
+
+    return null;
+  }
+}
+
+// TODO: NOT USED
+export function sumProofsAmount(proofs: Proof[]): string {
+  const total = proofs.reduce((sum, p) => sum + p.amount, 0);
+
+  return total.toString();
+}
+
+export function getProofKeysetId(proofs: Proof[]): string | null {
+  if (proofs.length === 0) {
+    return null;
+  }
+
+  return proofs[0].id;
 }

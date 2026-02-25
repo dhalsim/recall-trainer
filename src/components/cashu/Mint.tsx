@@ -28,6 +28,7 @@ interface MintProps {
   onSend: () => void;
   onHistory: () => void;
   onRemove?: () => void;
+  onRefresh?: () => void;
   panelState?: MintPanelState;
 }
 
@@ -64,8 +65,26 @@ export function Mint(props: MintProps) {
             >
               {t('Send')}
             </button>
-            <span class="text-xs text-slate-500">
+            <span class="flex items-center gap-1 text-xs text-slate-500">
               {t('Pending')}: {props.pendingCount}
+              <Show when={props.onRefresh}>
+                <button
+                  type="button"
+                  onClick={() => props.onRefresh?.()}
+                  class="ml-1 rounded p-0.5 hover:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  title={t('Refresh pending')}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    height="14px"
+                    viewBox="0 -960 960 960"
+                    width="14px"
+                    fill="currentColor"
+                  >
+                    <path d="M480-120q-138 0-240.5-91.5T122-440h82q14 104 92.5 172T480-200q117 0 198.5-81.5T760-480q0-117-81.5-198.5T480-760q-69 0-129 32t-101 88h110v80H120v-240h80v94q51-64 124.5-99T480-840q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-480q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-120Zm112-192L440-464v-216h80v184l128 128-56 56Z" />
+                  </svg>
+                </button>
+              </Show>
             </span>
             <button
               type="button"
@@ -136,7 +155,17 @@ export function Mint(props: MintProps) {
             {t('Send')} — {truncateUrl(props.mintUrl, 28)}
           </p>
           <Show when={!state()!.sentTokenEncoded}>
-            <label class="block text-xs text-slate-600">{t('Amount (sats)')}</label>
+            <div class="flex items-center justify-between gap-2">
+              <label class="block text-xs text-slate-600">{t('Amount (sats)')}</label>
+              <button
+                type="button"
+                onClick={() => state()!.setSendAmountInput(String(props.balance))}
+                disabled={props.balance <= 0}
+                class="text-xs font-medium text-blue-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {t('All')}
+              </button>
+            </div>
             <input
               type="number"
               min="1"
