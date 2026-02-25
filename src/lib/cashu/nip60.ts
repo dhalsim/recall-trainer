@@ -217,7 +217,6 @@ export function computeBalanceByMint(tokens: Nip60TokenContent[]): Map<string, n
 export type TokenStatus = 'created' | 'destroyed';
 export type Direction = 'in' | 'out';
 
-// TODO: NOT USED
 export async function publishTokenStatusEvent(
   direction: Direction,
   amount: string,

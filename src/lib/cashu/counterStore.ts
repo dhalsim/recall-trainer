@@ -51,19 +51,13 @@ export function clearCounters(): void {
   }
 }
 
-export function recoverCounter(keysetId: string, gapLimit = 20): number {
+export function recoverCounter(keysetId: string): number {
   const counters = getStoredCounters();
-  let current = counters[keysetId] ?? 0;
+  const current = (counters[keysetId] ?? 0) + 1;
 
-  for (let i = 0; i < gapLimit; i++) {
-    current += 1;
-    console.log(`[counterStore] Trying counter ${current} for keyset ${keysetId}`);
-    const countersMap = getStoredCounters();
-    countersMap[keysetId] = current;
-    saveCounters(countersMap);
+  console.log(`[counterStore] Recovering counter to ${current} for keyset ${keysetId}`);
 
-    return current;
-  }
+  setCounter(keysetId, current);
 
-  throw new Error('Could not recover counter within gap limit');
+  return current;
 }

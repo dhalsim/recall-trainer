@@ -22,7 +22,7 @@ import {
   queryTokens,
   queryWallet,
   walletContentToArray,
-  getProofKeysetId,
+  publishTokenStatusEvent,
 } from '../../lib/cashu/nip60';
 import {
   clearSeedCache,
@@ -38,6 +38,8 @@ import {
   addPendingProofs,
   getPendingProofsForMint,
   removePendingProofs,
+  getTokenEventId,
+  setTokenEventId,
 } from '../../lib/cashu/walletCache';
 import type { Nip65Relays } from '../../lib/nostr/nip65';
 import { getRelays } from '../../lib/nostr/nip65';
@@ -87,6 +89,7 @@ type PendingWalletAction =
       pubkey: string;
       mintUrl: string;
       proofs: Proof[];
+      oldTokenEventId?: string;
     };
 
 const PENDING_WALLET_ACTION_KEY = 'cashu_wallet_pending_action';
@@ -289,7 +292,9 @@ export function WalletDialog(props: WalletDialogProps) {
     return { open, pubkey };
   });
 
-  const completeWalletAction = async (action: PendingWalletAction): Promise<void> => {
+  const completeWalletAction = async (
+    action: PendingWalletAction,
+  ): Promise<{ success: boolean; eventId?: string }> => {
     if (
       action.type === 'create_wallet' ||
       action.type === 'add_mint' ||
@@ -332,13 +337,19 @@ export function WalletDialog(props: WalletDialogProps) {
         writeWalletCache(action.pubkey, action.content, proofsByMint());
       }
 
-      return;
+      return { success: true };
     }
 
-    const encrypted = await auth.nip44Encrypt(
-      action.pubkey,
-      JSON.stringify({ mint: action.mintUrl, proofs: action.proofs }),
-    );
+    const tokenContent: { mint: string; proofs: Proof[]; del?: string[] } = {
+      mint: action.mintUrl,
+      proofs: action.proofs,
+    };
+
+    if (action.oldTokenEventId) {
+      tokenContent.del = [action.oldTokenEventId];
+    }
+
+    const encrypted = await auth.nip44Encrypt(action.pubkey, JSON.stringify(tokenContent));
 
     const template = buildTokenEventTemplate(encrypted);
 
@@ -349,19 +360,55 @@ export function WalletDialog(props: WalletDialogProps) {
 
     const writeRelays = getWriteRelays(action.pubkey);
     pool.publish(writeRelays, signedEvent);
+
+    const oldTokenEventId = action.oldTokenEventId;
+
+    if (oldTokenEventId && auth.signEvent) {
+      void (async () => {
+        try {
+          const deleteTemplate: {
+            kind: number;
+            created_at: number;
+            tags: string[][];
+            content: string;
+          } = {
+            kind: 5,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [
+              ['e', oldTokenEventId],
+              ['k', '7375'],
+            ],
+            content: 'replaced by new token event',
+          };
+
+          const { signedEvent: deleteEvent } = await auth.signEvent({
+            event: deleteTemplate,
+            reason: 'Delete old token event',
+          });
+
+          pool.publish(writeRelays, deleteEvent);
+        } catch (err) {
+          logError('[CashuWallet] Failed to publish deletion event:', err);
+        }
+      })();
+    }
+
+    return { success: true, eventId: signedEvent.id };
   };
 
-  const runWalletAction = async (action: PendingWalletAction): Promise<boolean> => {
+  const runWalletAction = async (
+    action: PendingWalletAction,
+  ): Promise<{ success: boolean; eventId?: string }> => {
     writePendingWalletAction(action);
 
     try {
-      await completeWalletAction(action);
+      const result = await completeWalletAction(action);
       clearPendingWalletAction();
 
-      return true;
+      return result;
     } catch (err) {
       if (isNip55NavigationError(err)) {
-        return false;
+        return { success: false };
       }
 
       clearPendingWalletAction();
@@ -379,7 +426,7 @@ export function WalletDialog(props: WalletDialogProps) {
     try {
       const completed = await runWalletAction(pending);
 
-      if (!completed) {
+      if (!completed.success) {
         return;
       }
     } catch (err) {
@@ -572,14 +619,24 @@ export function WalletDialog(props: WalletDialogProps) {
     });
   };
 
-  const publishTokenEvent = async (mintUrl: string, proofs: Proof[]): Promise<boolean> => {
+  const publishTokenEvent = async (
+    mintUrl: string,
+    proofs: Proof[],
+    oldTokenEventId?: string,
+  ): Promise<{ success: boolean; eventId?: string }> => {
     const pk = auth.pubkey();
 
     if (!pk) {
-      return false;
+      return { success: false };
     }
 
-    return runWalletAction({ type: 'publish_token', pubkey: pk, mintUrl, proofs });
+    return runWalletAction({
+      type: 'publish_token',
+      pubkey: pk,
+      mintUrl,
+      proofs,
+      oldTokenEventId,
+    });
   };
 
   const openReceive = (mintUrl: string): void => {
@@ -724,48 +781,40 @@ export function WalletDialog(props: WalletDialogProps) {
           writeWalletCache(pk, wc, proofsByMint());
         }
 
-        const completed = await publishTokenEvent(mintUrl, merged);
+        const oldTokenEventId = pk ? getTokenEventId(pk, mintUrl) : null;
+        const completed = await publishTokenEvent(mintUrl, merged, oldTokenEventId ?? undefined);
 
-        if (!completed) {
+        if (!completed.success) {
           return;
         }
 
+        if (pk && completed.eventId) {
+          setTokenEventId(pk, mintUrl, completed.eventId);
+        }
+
         if (pk && auth.signEvent && auth.nip44Encrypt) {
-          const keysetId = getProofKeysetId(newProofs);
+          const tokenEventId = completed.eventId;
 
-          if (keysetId) {
-            try {
-              const amount = newProofs.reduce((sum, p) => sum + p.amount, 0).toString();
+          if (tokenEventId) {
+            const amount = newProofs.reduce((sum, p) => sum + p.amount, 0).toString();
 
-              const content = JSON.stringify([
-                ['direction', 'in'],
-                ['amount', amount],
-                ['unit', 'sat'],
-                ['e', keysetId, '', 'created'],
-              ]);
+            void publishTokenStatusEvent(
+              'in',
+              amount,
+              'sat',
+              tokenEventId,
+              'created',
+              pk,
+              async (template) => {
+                const { signedEvent } = await auth.signEvent({
+                  event: template as import('nostr-tools').EventTemplate,
+                  reason: 'Publish token status',
+                });
 
-              const encryptedContent = await auth.nip44Encrypt(pk, content);
-
-              const template = {
-                kind: 7376,
-                created_at: Math.floor(Date.now() / 1000),
-                tags: [],
-                content: encryptedContent,
-              };
-
-              const { signedEvent } = await auth.signEvent({
-                event: template,
-                reason: 'Publish token status',
-              });
-
-              if (signedEvent) {
-                const { pool } = await import('../../utils/nostr');
-                const writeRelays = getWriteRelays(pk);
-                pool.publish(writeRelays, signedEvent);
-              }
-            } catch (err) {
-              logError('[CashuWallet] Failed to publish token status event:', err);
-            }
+                return signedEvent;
+              },
+              auth.nip44Encrypt,
+            );
           }
         }
 
@@ -873,42 +922,38 @@ export function WalletDialog(props: WalletDialogProps) {
           writeWalletCache(pk, wc, proofsByMint());
         }
 
-        await publishTokenEvent(mintUrl, keep);
+        const oldTokenEventId = pk ? getTokenEventId(pk, mintUrl) : null;
+        const completed = await publishTokenEvent(mintUrl, keep, oldTokenEventId ?? undefined);
+
+        if (!completed.success) {
+          return;
+        }
+
+        if (pk && completed.eventId) {
+          setTokenEventId(pk, mintUrl, completed.eventId);
+        }
 
         if (pk && auth.signEvent && auth.nip44Encrypt) {
-          const keysetId = getProofKeysetId(toSend);
+          const tokenEventId = completed.eventId;
 
-          if (keysetId) {
-            try {
-              const content = JSON.stringify([
-                ['direction', 'out'],
-                ['amount', amount.toString()],
-                ['unit', 'sat'],
-                ['e', keysetId, '', 'created'],
-              ]);
+          if (tokenEventId) {
+            void publishTokenStatusEvent(
+              'out',
+              amount.toString(),
+              'sat',
+              tokenEventId,
+              'created',
+              pk,
+              async (template) => {
+                const { signedEvent } = await auth.signEvent({
+                  event: template as import('nostr-tools').EventTemplate,
+                  reason: 'Publish token status',
+                });
 
-              const encryptedContent = await auth.nip44Encrypt(pk, content);
-
-              const template = {
-                kind: 7376,
-                created_at: Math.floor(Date.now() / 1000),
-                tags: [],
-                content: encryptedContent,
-              };
-
-              const { signedEvent } = await auth.signEvent({
-                event: template,
-                reason: 'Publish token status',
-              });
-
-              if (signedEvent) {
-                const { pool } = await import('../../utils/nostr');
-                const writeRelays = getWriteRelays(pk);
-                pool.publish(writeRelays, signedEvent);
-              }
-            } catch (err) {
-              logError('[CashuWallet] Failed to publish token status event:', err);
-            }
+                return signedEvent;
+              },
+              auth.nip44Encrypt,
+            );
           }
         }
 

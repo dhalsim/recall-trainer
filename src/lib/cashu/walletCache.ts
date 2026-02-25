@@ -16,6 +16,7 @@ type CachedWallet = {
   walletContent: Nip60WalletContent;
   proofsByMint: Record<string, Proof[]>;
   pendingProofsByMint: Record<string, Proof[]>;
+  tokenEventIds: Record<string, string>;
 };
 
 function cacheKey(pubkey: string): string {
@@ -54,14 +55,17 @@ export function writeWalletCache(
   walletContent: Nip60WalletContent,
   proofsByMint: Map<string, Proof[]>,
   pendingProofsByMint?: Map<string, Proof[]>,
+  tokenEventIds?: Record<string, string>,
 ): void {
   try {
     const pendingMap = pendingProofsByMint ?? new Map();
+    const cached = readWalletCache(pubkey);
 
     const serializable: CachedWallet = {
       walletContent,
       proofsByMint: Object.fromEntries(proofsByMint),
       pendingProofsByMint: Object.fromEntries(pendingMap),
+      tokenEventIds: tokenEventIds ?? cached?.tokenEventIds ?? {},
     };
 
     localStorage.setItem(cacheKey(pubkey), JSON.stringify(serializable));
@@ -138,4 +142,26 @@ export function removePendingProofs(pubkey: string, mintUrl: string, secrets: st
     cacheKey(pubkey),
     JSON.stringify({ ...cached, pendingProofsByMint: pending }),
   );
+}
+
+export function getTokenEventId(pubkey: string, mintUrl: string): string | null {
+  const cached = readWalletCache(pubkey);
+
+  if (!cached?.tokenEventIds) {
+    return null;
+  }
+
+  return cached.tokenEventIds[mintUrl] ?? null;
+}
+
+export function setTokenEventId(pubkey: string, mintUrl: string, eventId: string): void {
+  const cached = readWalletCache(pubkey);
+
+  if (!cached) {
+    return;
+  }
+
+  const tokenEventIds = { ...cached.tokenEventIds, [mintUrl]: eventId };
+
+  localStorage.setItem(cacheKey(pubkey), JSON.stringify({ ...cached, tokenEventIds }));
 }
