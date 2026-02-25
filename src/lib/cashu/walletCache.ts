@@ -110,6 +110,16 @@ export function getAllPendingProofs(pubkey: string): Proof[] {
   return Object.values(cached.pendingProofsByMint).flat();
 }
 
+export function getPendingMintUrls(pubkey: string): string[] {
+  const cached = readWalletCache(pubkey);
+
+  if (!cached?.pendingProofsByMint) {
+    return [];
+  }
+
+  return Object.keys(cached.pendingProofsByMint);
+}
+
 export function addPendingProofs(pubkey: string, mintUrl: string, proofs: Proof[]): void {
   const cached = readWalletCache(pubkey);
 

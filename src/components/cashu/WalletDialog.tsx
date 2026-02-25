@@ -37,6 +37,7 @@ import {
   writeWalletCache,
   addPendingProofs,
   getPendingProofsForMint,
+  getPendingMintUrls,
   removePendingProofs,
   getTokenEventId,
   setTokenEventId,
@@ -216,6 +217,7 @@ export function WalletDialog(props: WalletDialogProps) {
         if (decrypted) {
           const cur = byMint.get(decrypted.mint) ?? [];
           byMint.set(decrypted.mint, [...cur, ...decrypted.proofs]);
+          setTokenEventId(pubkey, decrypted.mint, ev.id);
         }
       }
 
@@ -802,8 +804,7 @@ export function WalletDialog(props: WalletDialogProps) {
               'in',
               amount,
               'sat',
-              tokenEventId,
-              'created',
+              [{ eventId: tokenEventId, status: 'created' }],
               pk,
               async (template) => {
                 const { signedEvent } = await auth.signEvent({
@@ -935,14 +936,22 @@ export function WalletDialog(props: WalletDialogProps) {
 
         if (pk && auth.signEvent && auth.nip44Encrypt) {
           const tokenEventId = completed.eventId;
+          const oldTokenEventId = pk ? getTokenEventId(pk, mintUrl) : null;
 
           if (tokenEventId) {
+            const refs: { eventId: string; status: 'created' | 'destroyed' }[] = [
+              { eventId: tokenEventId, status: 'created' },
+            ];
+
+            if (oldTokenEventId) {
+              refs.unshift({ eventId: oldTokenEventId, status: 'destroyed' });
+            }
+
             void publishTokenStatusEvent(
               'out',
               amount.toString(),
               'sat',
-              tokenEventId,
-              'created',
+              refs,
               pk,
               async (template) => {
                 const { signedEvent } = await auth.signEvent({
@@ -1011,35 +1020,45 @@ export function WalletDialog(props: WalletDialogProps) {
     }
 
     try {
-      const pending = mintUrl ? getPendingProofsForMint(pk, mintUrl) : [];
+      const mintUrls = mintUrl ? [mintUrl] : getPendingMintUrls(pk);
 
-      if (pending.length === 0) {
-        return;
-      }
+      for (const url of mintUrls) {
+        const pending = getPendingProofsForMint(pk, url);
 
-      const mint = new Wallet(mintUrl ?? pending[0].id);
-      await mint.loadMint();
+        if (pending.length === 0) {
+          continue;
+        }
 
-      const states = await mint.checkProofsStates(pending);
-      const { CheckStateEnum } = await import('@cashu/cashu-ts');
+        const mint = new Wallet(url);
+        await mint.loadMint();
 
-      for (const state of states) {
-        if (state.state === CheckStateEnum.SPENT) {
-          const spentProof = pending.find((p) => p.secret === state.Y);
+        const states = await mint.checkProofsStates(pending);
+        const { CheckStateEnum } = await import('@cashu/cashu-ts');
 
-          if (spentProof) {
-            console.log(
-              '[CashuWallet] Proof spent (checked):',
-              spentProof.secret.slice(0, 8),
-              '...',
-            );
+        for (const state of states) {
+          if (state.state === CheckStateEnum.SPENT) {
+            const spentProof = pending.find((p) => p.secret === state.Y);
 
-            removePendingProofs(pk, mintUrl ?? pending[0].id, [spentProof.secret]);
+            if (spentProof) {
+              console.log(
+                '[CashuWallet] Proof spent (checked):',
+                spentProof.secret.slice(0, 8),
+                '...',
+              );
+
+              removePendingProofs(pk, url, [spentProof.secret]);
+            }
           }
         }
-      }
 
-      console.log('[CashuWallet] Checked pending proofs:', pending.length, 'total');
+        console.log(
+          '[CashuWallet] Checked pending proofs for mint',
+          url,
+          ':',
+          pending.length,
+          'total',
+        );
+      }
     } catch (err) {
       logError('[CashuWallet] Failed to check pending proofs:', err);
     }
@@ -1082,6 +1101,7 @@ export function WalletDialog(props: WalletDialogProps) {
       const proofsByMintUrl = new Map<string, Proof[]>();
       const pendingByMintUrl = new Map<string, Proof[]>();
 
+      const proofsByMintGroup = new Map<string, Proof[]>();
       for (const { proof, mintUrl } of allProofs) {
         if (!mintUrl) {
           const existing = pendingByMintUrl.get('') ?? [];
@@ -1089,17 +1109,27 @@ export function WalletDialog(props: WalletDialogProps) {
           continue;
         }
 
-        const mint = new Wallet(mintUrl);
-        await mint.loadMint();
+        const existing = proofsByMintGroup.get(mintUrl) ?? [];
+        proofsByMintGroup.set(mintUrl, [...existing, proof]);
+      }
 
-        const states = await mint.checkProofsStates([proof]);
+      for (const [mintUrl, mintProofs] of proofsByMintGroup) {
+        const wallet = new Wallet(mintUrl);
+        await wallet.loadMint();
+
+        const states = await wallet.checkProofsStates(mintProofs);
         const { CheckStateEnum } = await import('@cashu/cashu-ts');
 
-        if (states[0]?.state === CheckStateEnum.SPENT) {
-          console.log('[CashuWallet] Proof SPENT (cleanup):', proof.secret.slice(0, 8), '...');
-        } else {
-          const existing = proofsByMintUrl.get(mintUrl) ?? [];
-          proofsByMintUrl.set(mintUrl, [...existing, proof]);
+        for (let i = 0; i < mintProofs.length; i++) {
+          const proof = mintProofs[i];
+          const state = states[i];
+
+          if (state?.state === CheckStateEnum.SPENT) {
+            console.log('[CashuWallet] Proof SPENT (cleanup):', proof.secret.slice(0, 8), '...');
+          } else {
+            const existing = proofsByMintUrl.get(mintUrl) ?? [];
+            proofsByMintUrl.set(mintUrl, [...existing, proof]);
+          }
         }
       }
 
@@ -1125,40 +1155,54 @@ export function WalletDialog(props: WalletDialogProps) {
     }
 
     try {
-      const pending = getPendingProofsForMint(pk, '');
+      const mintUrls = getPendingMintUrls(pk);
 
-      if (pending.length === 0) {
+      if (mintUrls.length === 0) {
         console.log('[CashuWallet] No pending proofs to stream');
 
         return;
       }
 
-      console.log('[CashuWallet] Starting proof state stream for', pending.length, 'proofs');
+      for (const mintUrl of mintUrls) {
+        const pending = getPendingProofsForMint(pk, mintUrl);
 
-      const mint = new Wallet(pending[0].id);
-      await mint.loadMint();
+        if (pending.length === 0) {
+          continue;
+        }
 
-      const { CheckStateEnum } = await import('@cashu/cashu-ts');
-
-      for await (const update of mint.on.proofStatesStream(pending) as AsyncIterable<{
-        state: string;
-        proof: { secret: string };
-      }>) {
         console.log(
-          '[CashuWallet] Proof state update:',
-          update.state,
-          update.proof.secret.slice(0, 8),
-          '...',
+          '[CashuWallet] Starting proof state stream for mint',
+          mintUrl,
+          'with',
+          pending.length,
+          'proofs',
         );
 
-        if (update.state === CheckStateEnum.SPENT) {
+        const mint = new Wallet(mintUrl);
+        await mint.loadMint();
+
+        const { CheckStateEnum } = await import('@cashu/cashu-ts');
+
+        for await (const update of mint.on.proofStatesStream(pending) as AsyncIterable<{
+          state: string;
+          proof: { secret: string };
+        }>) {
           console.log(
-            '[CashuWallet] Proof SPENT (stream):',
+            '[CashuWallet] Proof state update:',
+            update.state,
             update.proof.secret.slice(0, 8),
             '...',
           );
 
-          removePendingProofs(pk, pending[0].id, [update.proof.secret]);
+          if (update.state === CheckStateEnum.SPENT) {
+            console.log(
+              '[CashuWallet] Proof SPENT (stream):',
+              update.proof.secret.slice(0, 8),
+              '...',
+            );
+
+            removePendingProofs(pk, mintUrl, [update.proof.secret]);
+          }
         }
       }
     } catch (err) {

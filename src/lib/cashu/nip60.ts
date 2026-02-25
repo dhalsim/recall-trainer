@@ -221,18 +221,19 @@ export async function publishTokenStatusEvent(
   direction: Direction,
   amount: string,
   unit: string,
-  eventRef: string,
-  status: TokenStatus,
+  refs: { eventId: string; status: TokenStatus }[],
   pubkey: string,
   signEvent: (template: EventTemplate) => Promise<Event>,
   nip44Encrypt: (pubkey: string, plaintext: string) => Promise<string>,
 ): Promise<string | null> {
   try {
+    const eTags = refs.map(({ eventId, status }) => ['e', eventId, '', status] as const);
+
     const content = JSON.stringify([
       ['direction', direction],
       ['amount', amount],
       ['unit', unit],
-      ['e', eventRef, '', status],
+      ...eTags,
     ]);
 
     const encryptedContent = await nip44Encrypt(pubkey, content);
@@ -256,19 +257,4 @@ export async function publishTokenStatusEvent(
 
     return null;
   }
-}
-
-// TODO: NOT USED
-export function sumProofsAmount(proofs: Proof[]): string {
-  const total = proofs.reduce((sum, p) => sum + p.amount, 0);
-
-  return total.toString();
-}
-
-export function getProofKeysetId(proofs: Proof[]): string | null {
-  if (proofs.length === 0) {
-    return null;
-  }
-
-  return proofs[0].id;
 }
