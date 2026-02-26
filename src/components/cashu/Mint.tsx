@@ -207,7 +207,7 @@ export function Mint(props: MintProps) {
         </div>
       </Show>
 
-          <Show when={panel() === 'history' && state()}>
+      <Show when={panel() === 'history' && state()}>
         <div class="mt-4 space-y-4">
           <button
             type="button"

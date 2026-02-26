@@ -1,6 +1,6 @@
 import { getEncodedToken, sumProofs, Wallet } from '@cashu/cashu-ts';
 import type { Proof } from '@cashu/cashu-ts';
-import { createEffect, createSignal, Show, For } from 'solid-js';
+import { createEffect, createSignal, onCleanup, Show, For, Index } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 type CreateWalletStep = 'form' | 'backup-phrase' | 'creating' | 'done';
@@ -15,7 +15,7 @@ import {
 } from '../../lib/cashu/counterStore';
 import { backgroundSync, loadFromDB, type DiscoverStore } from '../../lib/cashu/discoverCache';
 import { clearMintData, fetchAndStoreMintData } from '../../lib/cashu/mintStore';
-import type { Nip60WalletContent } from '../../lib/cashu/nip60';
+import type { Nip60WalletContent, HistoryEntry } from '../../lib/cashu/nip60';
 import {
   buildTokenEventTemplate,
   buildWalletEventTemplate,
@@ -25,6 +25,8 @@ import {
   queryWallet,
   walletContentToArray,
   publishTokenStatusEvent,
+  queryHistory,
+  decryptHistoryContent,
 } from '../../lib/cashu/nip60';
 import {
   clearSeedCache,
@@ -35,6 +37,7 @@ import {
 import {
   clearWalletCache,
   proofMapFromCache,
+  pendingProofsMapFromCache,
   readWalletCache,
   writeWalletCache,
   addPendingProofs,
@@ -58,6 +61,7 @@ import {
 
 import { Mint, type MintPanelState, type MintPanelType } from './Mint';
 import { MintDiscovery } from './MintDiscovery';
+import { RecoverWalletDialog } from './RecoverWalletDialog';
 
 async function getWalletSeed(
   pubkey: string,
@@ -166,7 +170,13 @@ export function WalletDialog(props: WalletDialogProps) {
   const [errorMessage, setErrorMessage] = createSignal<string | null>(null);
   const [walletContent, setWalletContent] = createSignal<Nip60WalletContent | null>(null);
   const [proofsByMint, setProofsByMint] = createSignal<Map<string, Proof[]>>(new Map());
-  const [pendingSentByMint, setPendingSentByMint] = createSignal<Map<string, Proof[]>>(new Map());
+
+  const [pendingProofsByMint, setPendingProofsByMint] = createSignal<Map<string, Proof[]>>(
+    new Map(),
+  );
+
+  const [mintHistory, setMintHistory] = createSignal<HistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = createSignal(false);
   const [showCreateForm, setShowCreateForm] = createSignal(false);
   const [createMintUrls, setCreateMintUrls] = createSignal<string[]>(['']);
   const [createStep, setCreateStep] = createSignal<CreateWalletStep>('form');
@@ -181,6 +191,7 @@ export function WalletDialog(props: WalletDialogProps) {
   const [sentTokenEncoded, setSentTokenEncoded] = createSignal<string | null>(null);
   const [loadingOp, setLoadingOp] = createSignal(false);
   const [showDiscoverPanel, setShowDiscoverPanel] = createSignal(false);
+  const [showRecoverDialog, setShowRecoverDialog] = createSignal(false);
   const [generateSeed, setGenerateSeed] = createSignal(true);
 
   const [discoverStore, setDiscoverStore] = createStore<DiscoverStore>({
@@ -191,6 +202,12 @@ export function WalletDialog(props: WalletDialogProps) {
   });
 
   const [syncing, setSyncing] = createSignal(false);
+
+  let streamAbortController: AbortController | null = null;
+
+  onCleanup(() => {
+    streamAbortController?.abort();
+  });
 
   const syncWalletFromRelays = async (pubkey: string): Promise<void> => {
     setSyncing(true);
@@ -267,6 +284,7 @@ export function WalletDialog(props: WalletDialogProps) {
     if (cached && cached.walletContent.privkey) {
       setWalletContent(cached.walletContent);
       setProofsByMint(proofMapFromCache(cached));
+      setPendingProofsByMint(pendingProofsMapFromCache(cached));
       setWalletState('loaded');
 
       void syncWalletFromRelays(pubkey);
@@ -626,12 +644,17 @@ export function WalletDialog(props: WalletDialogProps) {
     const updated: Nip60WalletContent = { ...content, mints: remainingMints };
     const nextProofsByMint = new Map(proofsByMint());
     nextProofsByMint.delete(mintUrl);
-    const nextPendingSentByMint = new Map(pendingSentByMint());
-    nextPendingSentByMint.delete(mintUrl);
 
     setWalletContent(updated);
     setProofsByMint(nextProofsByMint);
-    setPendingSentByMint(nextPendingSentByMint);
+
+    setPendingProofsByMint((m) => {
+      const next = new Map(m);
+      next.delete(mintUrl);
+
+      return next;
+    });
+
     setErrorMessage(null);
 
     if (selectedMintUrl() === mintUrl) {
@@ -721,6 +744,41 @@ export function WalletDialog(props: WalletDialogProps) {
     setSendAmountInput('');
     setSentTokenEncoded(null);
     setErrorMessage(null);
+  };
+
+  const openHistory = async (mintUrl: string): Promise<void> => {
+    const pk = auth.pubkey();
+
+    if (!pk) {
+      return;
+    }
+
+    setSelectedMintUrl(mintUrl);
+    setMintPanel('history');
+    setHistoryLoading(true);
+    setMintHistory([]);
+
+    try {
+      const readRelays = getReadRelays(pk);
+      const events = await queryHistory(readRelays, pk);
+
+      const decrypted: HistoryEntry[] = [];
+
+      for (const ev of events) {
+        const entry = await decryptHistoryContent(ev, auth.nip44Decrypt, pk);
+
+        if (entry) {
+          decrypted.push(entry);
+        }
+      }
+
+      decrypted.sort((a, b) => b.createdAt - a.createdAt);
+      setMintHistory(decrypted);
+    } catch (err) {
+      logError('[CashuWallet] Failed to load history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
   };
 
   const closeMintPanel = (): void => {
@@ -985,11 +1043,8 @@ export function WalletDialog(props: WalletDialogProps) {
           return next;
         });
 
+        addPending(mintUrl, toSend);
         const pk = auth.pubkey();
-
-        if (pk) {
-          addPendingProofs(pk, mintUrl, toSend);
-        }
 
         const wc = walletContent();
 
@@ -1083,15 +1138,47 @@ export function WalletDialog(props: WalletDialogProps) {
   const balanceForMint = (mintUrl: string): number => sumProofs(proofsByMint().get(mintUrl) ?? []);
 
   const pendingCountForMint = (mintUrl: string): number => {
+    return pendingProofsByMint().get(mintUrl)?.length ?? 0;
+  };
+
+  const addPending = (mintUrl: string, proofs: Proof[]): void => {
     const pk = auth.pubkey();
 
     if (!pk) {
-      return 0;
+      return;
     }
 
-    const pending = getPendingProofsForMint(pk, mintUrl);
+    addPendingProofs(pk, mintUrl, proofs);
 
-    return pending.length;
+    setPendingProofsByMint((m) => {
+      const next = new Map(m);
+      const existing = next.get(mintUrl) ?? [];
+      next.set(mintUrl, [...existing, ...proofs]);
+
+      return next;
+    });
+  };
+
+  const removePending = (mintUrl: string, secrets: string[]): void => {
+    const pk = auth.pubkey();
+
+    if (!pk) {
+      return;
+    }
+
+    removePendingProofs(pk, mintUrl, secrets);
+
+    setPendingProofsByMint((m) => {
+      const next = new Map(m);
+      const existing = next.get(mintUrl) ?? [];
+
+      next.set(
+        mintUrl,
+        existing.filter((p) => !secrets.includes(p.secret)),
+      );
+
+      return next;
+    });
   };
 
   const checkPendingProofs = async (mintUrl?: string): Promise<void> => {
@@ -1128,7 +1215,7 @@ export function WalletDialog(props: WalletDialogProps) {
                 '...',
               );
 
-              removePendingProofs(pk, url, [spentProof.secret]);
+              removePending(url, [spentProof.secret]);
             }
           }
         }
@@ -1244,6 +1331,10 @@ export function WalletDialog(props: WalletDialogProps) {
       return;
     }
 
+    streamAbortController?.abort();
+    streamAbortController = new AbortController();
+    const signal = streamAbortController.signal;
+
     try {
       const mintUrls = getPendingMintUrls(pk);
 
@@ -1273,7 +1364,7 @@ export function WalletDialog(props: WalletDialogProps) {
 
         const { CheckStateEnum } = await import('@cashu/cashu-ts');
 
-        for await (const update of mint.on.proofStatesStream(pending) as AsyncIterable<{
+        for await (const update of mint.on.proofStatesStream(pending, { signal }) as AsyncIterable<{
           state: string;
           proof: { secret: string };
         }>) {
@@ -1291,7 +1382,7 @@ export function WalletDialog(props: WalletDialogProps) {
               '...',
             );
 
-            removePendingProofs(pk, mintUrl, [update.proof.secret]);
+            removePending(mintUrl, [update.proof.secret]);
           }
         }
       }
@@ -1391,19 +1482,19 @@ export function WalletDialog(props: WalletDialogProps) {
                 <div class="mt-4 space-y-4">
                   <div>
                     <p class="text-sm font-medium text-slate-700">{t('Add Mint')}</p>
-                    <For each={createMintUrls()}>
+                    <Index each={createMintUrls()}>
                       {(url, i) => (
                         <div class="mt-2 flex gap-2">
                           <input
                             type="url"
                             placeholder={t('Mint URL')}
-                            value={url}
-                            onInput={(e) => setCreateMintUrlAt(i(), e.currentTarget.value)}
+                            value={url()}
+                            onInput={(e) => setCreateMintUrlAt(i, e.currentTarget.value)}
                             class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                           />
                         </div>
                       )}
-                    </For>
+                    </Index>
                     <button
                       type="button"
                       onClick={addCreateMintRow}
@@ -1549,10 +1640,7 @@ export function WalletDialog(props: WalletDialogProps) {
                             panel={null}
                             onReceive={() => openReceive(mintUrl)}
                             onSend={() => openSend(mintUrl)}
-                            onHistory={() => {
-                              setSelectedMintUrl(mintUrl);
-                              setMintPanel('history');
-                            }}
+                            onHistory={() => void openHistory(mintUrl)}
                             onRemove={() => handleRemoveMint(mintUrl)}
                             onRefresh={() => checkPendingProofs(mintUrl)}
                           />
@@ -1626,6 +1714,13 @@ export function WalletDialog(props: WalletDialogProps) {
                   >
                     {t('Reset Wallet')}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowRecoverDialog(true)}
+                    class="mt-2 w-full rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                  >
+                    {t('Recover Wallet')}
+                  </button>
                 </div>
               </Show>
 
@@ -1642,7 +1737,7 @@ export function WalletDialog(props: WalletDialogProps) {
                   panel={mintPanel()}
                   onReceive={() => openReceive(selectedMintUrl()!)}
                   onSend={() => openSend(selectedMintUrl()!)}
-                  onHistory={() => setMintPanel('history')}
+                  onHistory={() => void openHistory(selectedMintUrl()!)}
                   onRefresh={() => checkPendingProofs(selectedMintUrl()!)}
                   panelState={mintPanelState()}
                 />
@@ -1661,6 +1756,18 @@ export function WalletDialog(props: WalletDialogProps) {
           </div>
         </div>
       </div>
+
+      <Show when={showRecoverDialog()}>
+        <RecoverWalletDialog
+          pubkey={auth.pubkey()!}
+          auth={auth}
+          onComplete={() => {
+            setShowRecoverDialog(false);
+            void loadWallet();
+          }}
+          onCancel={() => setShowRecoverDialog(false)}
+        />
+      </Show>
     </Show>
   );
 }

@@ -358,7 +358,10 @@ export function RecoverWalletDialog(props: RecoverWalletDialogProps) {
             <button
               type="button"
               class="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-              onClick={() => props.onCancel()}
+              onClick={() => {
+                setMnemonic('');
+                props.onCancel();
+              }}
             >
               {t('Cancel')}
             </button>
@@ -439,7 +442,10 @@ export function RecoverWalletDialog(props: RecoverWalletDialogProps) {
               <button
                 type="button"
                 class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                onClick={() => props.onCancel()}
+                onClick={() => {
+                  setMnemonic('');
+                  props.onCancel();
+                }}
               >
                 {t('Done')}
               </button>
@@ -462,7 +468,10 @@ export function RecoverWalletDialog(props: RecoverWalletDialogProps) {
             <button
               type="button"
               class="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-              onClick={() => props.onCancel()}
+              onClick={() => {
+                setMnemonic('');
+                props.onCancel();
+              }}
             >
               {t('Cancel')}
             </button>
