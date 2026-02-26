@@ -1,6 +1,6 @@
 import { getEncodedToken, sumProofs, Wallet } from '@cashu/cashu-ts';
 import type { Proof } from '@cashu/cashu-ts';
-import { createEffect, createSignal, onCleanup, Show, For, Index } from 'solid-js';
+import { createEffect, createSignal, onCleanup, Show } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 type CreateWalletStep = 'form' | 'backup-phrase' | 'creating' | 'done';
@@ -59,9 +59,11 @@ import {
   pool,
 } from '../../utils/nostr';
 
+import { CreateWalletFlow } from './CreateWalletFlow';
 import { Mint, type MintPanelState, type MintPanelType } from './Mint';
 import { MintDiscovery } from './MintDiscovery';
 import { RecoverWalletDialog } from './RecoverWalletDialog';
+import { WalletOverview } from './WalletOverview';
 
 async function getWalletSeed(
   pubkey: string,
@@ -1420,6 +1422,27 @@ export function WalletDialog(props: WalletDialogProps) {
     };
   };
 
+  const handleReset = (): void => {
+    const pk = auth.pubkey();
+
+    if (pk) {
+      clearWalletCache(pk);
+      clearSeedCache(pk);
+      clearCounters();
+      for (const mintUrl of walletContent()?.mints ?? []) {
+        clearMintData(mintUrl);
+      }
+    }
+
+    setWalletState('no-wallet');
+    setWalletContent(null);
+    setProofsByMint(new Map());
+    setShowCreateForm(true);
+    setCreateStep('form');
+    setPendingMnemonic(null);
+    setPendingSeed(null);
+  };
+
   return (
     <Show when={props.open}>
       <div
@@ -1464,153 +1487,33 @@ export function WalletDialog(props: WalletDialogProps) {
                 <p class="mt-4 text-sm text-red-600">{errorMessage()}</p>
               </Show>
 
-              <Show when={walletState() === 'no-wallet' && !showCreateForm()}>
-                <p class="mt-4 text-sm text-slate-600">{t('No wallets found for this account.')}</p>
-                <p class="mt-2 text-sm text-slate-500">
-                  {t('Create a new wallet and transfer funds to it.')}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateForm(true)}
-                  class="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                >
-                  {t('Create Wallet')}
-                </button>
-              </Show>
-
-              <Show when={walletState() === 'no-wallet' && showCreateForm()}>
-                <div class="mt-4 space-y-4">
-                  <div>
-                    <p class="text-sm font-medium text-slate-700">{t('Add Mint')}</p>
-                    <Index each={createMintUrls()}>
-                      {(url, i) => (
-                        <div class="mt-2 flex gap-2">
-                          <input
-                            type="url"
-                            placeholder={t('Mint URL')}
-                            value={url()}
-                            onInput={(e) => setCreateMintUrlAt(i, e.currentTarget.value)}
-                            class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          />
-                        </div>
-                      )}
-                    </Index>
-                    <button
-                      type="button"
-                      onClick={addCreateMintRow}
-                      class="mt-2 text-sm text-blue-600 hover:underline"
-                    >
-                      + {t('Add Mint')}
-                    </button>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="generate-seed"
-                      checked={generateSeed()}
-                      onChange={(e) => setGenerateSeed(e.currentTarget.checked)}
-                      class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <label for="generate-seed" class="text-sm text-slate-700">
-                      {t('Generate recovery phrase (12 words)')}
-                    </label>
-                  </div>
-                  <Show when={errorMessage()}>
-                    <p class="text-sm text-red-600">{errorMessage()}</p>
-                  </Show>
-                  <div class="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowCreateForm(false);
-                        setErrorMessage(null);
-                      }}
-                      class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
-                    >
-                      {t('Back')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleCreateWalletPhase1()}
-                      disabled={createStep() === 'creating'}
-                      class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
-                    >
-                      {createStep() === 'creating' ? t('Creating wallet...') : t('Create Wallet')}
-                    </button>
-                  </div>
-                </div>
-              </Show>
-
-              <Show when={walletState() === 'no-wallet' && createStep() === 'backup-phrase'}>
-                <div class="space-y-4">
-                  <div class="rounded-xl border-2 border-amber-400 bg-amber-50 p-4">
-                    <p class="text-sm font-semibold text-amber-900">
-                      {t('Write down your recovery phrase')}
-                    </p>
-                    <p class="mt-1 text-xs text-amber-700">
-                      {t(
-                        'These 12 words are the only way to recover your wallet. Write them down now. They will not be shown again.',
-                      )}
-                    </p>
-
-                    <div class="mt-3 grid grid-cols-3 gap-2">
-                      <For each={pendingMnemonic()?.split(' ') ?? []}>
-                        {(word, i) => (
-                          <div class="flex items-center gap-1 rounded bg-white px-2 py-1 text-xs">
-                            <span class="text-slate-400 w-4">{i() + 1}.</span>
-                            <span class="font-mono font-medium text-slate-800">{word}</span>
-                          </div>
-                        )}
-                      </For>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(pendingMnemonic() ?? '');
-                      setClipboardCopied(true);
-
-                      setTimeout(() => {
-                        void navigator.clipboard.writeText('');
-                        setClipboardCopied(false);
-                      }, 30000);
-                    }}
-                    class="w-full rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
-                  >
-                    {clipboardCopied()
-                      ? t('Copied — clipboard clears in 30s')
-                      : t('Dangerously copy to clipboard')}
-                  </button>
-
-                  <Show when={errorMessage()}>
-                    <p class="text-sm text-red-600">{errorMessage()}</p>
-                  </Show>
-
-                  <div class="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPendingMnemonic(null);
-                        setPendingSeed(null);
-                        setCreateStep('form');
-                        setErrorMessage(null);
-                      }}
-                      class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                    >
-                      {t('Back')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void handleCreateWalletPhase2(pendingMnemonic(), pendingSeed())
-                      }
-                      class="flex-1 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
-                    >
-                      {t("I've backed it up — Create Wallet")}
-                    </button>
-                  </div>
-                </div>
+              <Show when={walletState() === 'no-wallet'}>
+                <CreateWalletFlow
+                  showCreateForm={showCreateForm()}
+                  createStep={createStep()}
+                  createMintUrls={createMintUrls()}
+                  generateSeed={generateSeed()}
+                  pendingMnemonic={pendingMnemonic()}
+                  clipboardCopied={clipboardCopied()}
+                  errorMessage={errorMessage()}
+                  onShowCreateForm={() => setShowCreateForm(true)}
+                  onBack={() => {
+                    setShowCreateForm(false);
+                    setErrorMessage(null);
+                  }}
+                  setCreateMintUrlAt={setCreateMintUrlAt}
+                  addCreateMintRow={addCreateMintRow}
+                  setGenerateSeed={setGenerateSeed}
+                  setClipboardCopied={setClipboardCopied}
+                  onPhase1={() => void handleCreateWalletPhase1()}
+                  onPhase2={() => void handleCreateWalletPhase2(pendingMnemonic(), pendingSeed())}
+                  onBackFromPhrase={() => {
+                    setPendingMnemonic(null);
+                    setPendingSeed(null);
+                    setCreateStep('form');
+                    setErrorMessage(null);
+                  }}
+                />
               </Show>
 
               <Show when={walletState() === 'loaded' && showDiscoverPanel()}>
@@ -1627,101 +1530,23 @@ export function WalletDialog(props: WalletDialogProps) {
               </Show>
 
               <Show when={walletState() === 'loaded' && !mintPanel() && !showDiscoverPanel()}>
-                <div class="mt-4 space-y-4">
-                  <div>
-                    <p class="text-sm font-medium text-slate-700">{t('Mints')}</p>
-                    <ul class="mt-2 space-y-3">
-                      <For each={walletContent()?.mints ?? []}>
-                        {(mintUrl) => (
-                          <Mint
-                            mintUrl={mintUrl}
-                            balance={balanceForMint(mintUrl)}
-                            pendingCount={pendingCountForMint(mintUrl)}
-                            panel={null}
-                            onReceive={() => openReceive(mintUrl)}
-                            onSend={() => openSend(mintUrl)}
-                            onHistory={() => void openHistory(mintUrl)}
-                            onRemove={() => handleRemoveMint(mintUrl)}
-                            onRefresh={() => checkPendingProofs(mintUrl)}
-                          />
-                        )}
-                      </For>
-                    </ul>
-                  </div>
-                  <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div class="space-y-1">
-                      <p class="text-sm font-semibold text-slate-800">{t('Add Mint')}</p>
-                      <p class="text-xs text-slate-500">
-                        {t('Choose how you want to add a mint to your wallet.')}
-                      </p>
-                    </div>
-                    <div class="mt-3">
-                      <label class="mb-2 block text-xs font-medium uppercase tracking-wide text-slate-700">
-                        {t('Mint URL')}
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://mint-url"
-                        value={addMintUrl()}
-                        onInput={(e) => setAddMintUrl(e.currentTarget.value)}
-                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <button
-                        type="button"
-                        onClick={() => handleAddMint()}
-                        class="flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                      >
-                        + {t('Add Mint')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={openDiscoverPanel}
-                        class="flex items-center justify-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                      >
-                        {t('Discover mints')}
-                      </button>
-                    </div>
-
-                    <Show when={errorMessage()}>
-                      <p class="mt-3 text-sm text-red-600">{errorMessage()}</p>
-                    </Show>
-                  </section>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const pk = auth.pubkey();
-
-                      if (pk) {
-                        clearWalletCache(pk);
-                        clearSeedCache(pk);
-                        clearCounters();
-                        for (const mintUrl of walletContent()?.mints ?? []) {
-                          clearMintData(mintUrl);
-                        }
-                      }
-
-                      setWalletState('no-wallet');
-                      setWalletContent(null);
-                      setProofsByMint(new Map());
-                      setShowCreateForm(true);
-                      setCreateStep('form');
-                      setPendingMnemonic(null);
-                      setPendingSeed(null);
-                    }}
-                    class="mt-4 w-full rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                  >
-                    {t('Reset Wallet')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowRecoverDialog(true)}
-                    class="mt-2 w-full rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
-                  >
-                    {t('Recover Wallet')}
-                  </button>
-                </div>
+                <WalletOverview
+                  walletContent={walletContent()!}
+                  addMintUrl={addMintUrl()}
+                  errorMessage={errorMessage()}
+                  balanceForMint={balanceForMint}
+                  pendingCountForMint={pendingCountForMint}
+                  onReceive={openReceive}
+                  onSend={openSend}
+                  onHistory={(mintUrl) => void openHistory(mintUrl)}
+                  onRemoveMint={handleRemoveMint}
+                  onRefreshPending={(mintUrl) => void checkPendingProofs(mintUrl)}
+                  setAddMintUrl={setAddMintUrl}
+                  onAddMint={handleAddMint}
+                  onOpenDiscover={openDiscoverPanel}
+                  onReset={handleReset}
+                  onRecover={() => setShowRecoverDialog(true)}
+                />
               </Show>
 
               <Show
