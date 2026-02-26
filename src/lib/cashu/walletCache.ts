@@ -7,7 +7,7 @@ import type { Proof } from '@cashu/cashu-ts';
 
 import { logger } from '../../utils/logger';
 
-import type { Nip60WalletContent } from './nip60';
+import type { Nip60WalletContent, HistoryEntry } from './nip60';
 
 const CACHE_KEY_PREFIX = 'recall-trainer-wallet-cache-';
 const { error } = logger();
@@ -17,6 +17,7 @@ type CachedWallet = {
   proofsByMint: Record<string, Proof[]>;
   pendingProofsByMint: Record<string, Proof[]>;
   tokenEventIds: Record<string, string>;
+  history: HistoryEntry[];
 };
 
 function cacheKey(pubkey: string): string {
@@ -54,18 +55,18 @@ export function writeWalletCache(
   pubkey: string,
   walletContent: Nip60WalletContent,
   proofsByMint: Map<string, Proof[]>,
-  pendingProofsByMint?: Map<string, Proof[]>,
-  tokenEventIds?: Record<string, string>,
+  pendingProofsByMint: Map<string, Proof[]>,
+  tokenEventIds: Record<string, string>,
 ): void {
   try {
-    const pendingMap = pendingProofsByMint ?? new Map();
     const cached = readWalletCache(pubkey);
 
     const serializable: CachedWallet = {
       walletContent,
       proofsByMint: Object.fromEntries(proofsByMint),
-      pendingProofsByMint: Object.fromEntries(pendingMap),
-      tokenEventIds: tokenEventIds ?? cached?.tokenEventIds ?? {},
+      pendingProofsByMint: Object.fromEntries(pendingProofsByMint),
+      tokenEventIds,
+      history: cached?.history ?? [],
     };
 
     localStorage.setItem(cacheKey(pubkey), JSON.stringify(serializable));
@@ -78,16 +79,28 @@ export function proofMapFromCache(cached: CachedWallet): Map<string, Proof[]> {
   return new Map(Object.entries(cached.proofsByMint));
 }
 
+export function pendingProofsMapFromCache(cached: CachedWallet): Map<string, Proof[]> {
+  return new Map(Object.entries(cached.pendingProofsByMint ?? {}));
+}
+
+export function readPendingAndEventIds(pubkey: string): {
+  pendingProofsByMint: Map<string, Proof[]>;
+  tokenEventIds: Record<string, string>;
+} {
+  const cached = readWalletCache(pubkey);
+
+  return {
+    pendingProofsByMint: new Map(Object.entries(cached?.pendingProofsByMint ?? {})),
+    tokenEventIds: cached?.tokenEventIds ?? {},
+  };
+}
+
 export function clearWalletCache(pubkey: string): void {
   try {
     localStorage.removeItem(cacheKey(pubkey));
   } catch (err) {
     error('[walletCache] Failed to clear:', err);
   }
-}
-
-export function pendingProofsMapFromCache(cached: CachedWallet): Map<string, Proof[]> {
-  return new Map(Object.entries(cached.pendingProofsByMint ?? {}));
 }
 
 export function getPendingProofsForMint(pubkey: string, mintUrl: string): Proof[] {
@@ -174,4 +187,20 @@ export function setTokenEventId(pubkey: string, mintUrl: string, eventId: string
   const tokenEventIds = { ...cached.tokenEventIds, [mintUrl]: eventId };
 
   localStorage.setItem(cacheKey(pubkey), JSON.stringify({ ...cached, tokenEventIds }));
+}
+
+export function getHistory(pubkey: string): HistoryEntry[] {
+  const cached = readWalletCache(pubkey);
+
+  return cached?.history ?? [];
+}
+
+export function setHistory(pubkey: string, entries: HistoryEntry[]): void {
+  const cached = readWalletCache(pubkey);
+
+  if (!cached) {
+    return;
+  }
+
+  localStorage.setItem(cacheKey(pubkey), JSON.stringify({ ...cached, history: entries }));
 }

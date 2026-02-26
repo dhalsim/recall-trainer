@@ -1,7 +1,9 @@
-import { generateMnemonic, mnemonicToSeed } from '@scure/bip39';
+import { generateMnemonic, mnemonicToSeed, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english.js';
 
 import { logger } from '../../utils/logger';
+
+export { validateMnemonic, wordlist };
 
 const uint8ArrayToBase64 = (uint8Array: Uint8Array): string => {
   let binary = '';
@@ -39,27 +41,19 @@ export async function convertMnemonicToSeed(mnemonic: string): Promise<Uint8Arra
   return mnemonicToSeed(mnemonic);
 }
 
-export function saveSeedToCache(
+export async function saveSeedToCache(
   pubkey: string,
   seed: Uint8Array,
   encryptFn: (pubkey: string, plaintext: string) => Promise<string>,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    try {
-      const seedBase64 = uint8ArrayToBase64(seed);
-      const encrypted = encryptFn(pubkey, seedBase64);
-
-      encrypted
-        .then((ciphertext) => {
-          localStorage.setItem(`${SEED_CACHE_PREFIX}${pubkey}`, ciphertext);
-          resolve();
-        })
-        .catch(reject);
-    } catch (err) {
-      logError('[seed] Failed to save seed:', err);
-      reject(err);
-    }
-  });
+  try {
+    const seedBase64 = uint8ArrayToBase64(seed);
+    const ciphertext = await encryptFn(pubkey, seedBase64);
+    localStorage.setItem(`${SEED_CACHE_PREFIX}${pubkey}`, ciphertext);
+  } catch (err) {
+    logError('[seed] Failed to save seed:', err);
+    throw err;
+  }
 }
 
 export async function loadSeedFromCache(

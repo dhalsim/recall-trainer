@@ -31,7 +31,7 @@ import { assertUnreachable, DEFAULT_READ_RELAYS, pool } from '../utils/nostr';
 export type { BunkerSignerData, NostrConnectData, LoginResult, NostrProvider };
 const { log, error: logError } = logger();
 
-interface NostrAuthContextValue {
+export interface NostrAuthContextValue {
   provider: NostrProvider | null;
   pubkey: () => string | null;
   isLoggedIn: () => boolean;

@@ -1,6 +1,7 @@
-import { Show } from 'solid-js';
+import { Show, For } from 'solid-js';
 
 import { t } from '../../i18n';
+import type { HistoryEntry } from '../../lib/cashu/nip60';
 
 import { truncateUrl } from './utils';
 
@@ -17,6 +18,8 @@ export interface MintPanelState {
   onReceiveSubmit: () => void;
   onSendSubmit: () => void;
   onClosePanel: () => void;
+  history: HistoryEntry[];
+  historyLoading: boolean;
 }
 
 interface MintProps {
@@ -28,7 +31,7 @@ interface MintProps {
   onSend: () => void;
   onHistory: () => void;
   onRemove?: () => void;
-  onRefresh?: () => void;
+  onRefresh: () => void;
   panelState?: MintPanelState;
 }
 
@@ -204,8 +207,7 @@ export function Mint(props: MintProps) {
         </div>
       </Show>
 
-      {/* History panel */}
-      <Show when={panel() === 'history' && state()}>
+          <Show when={panel() === 'history' && state()}>
         <div class="mt-4 space-y-4">
           <button
             type="button"
@@ -217,7 +219,40 @@ export function Mint(props: MintProps) {
           <p class="text-sm font-medium text-slate-700">
             {t('History')} — {truncateUrl(props.mintUrl, 28)}
           </p>
-          <p class="text-xs text-slate-500">{t('Transaction history will appear here.')}</p>
+
+          <Show when={state()!.historyLoading && state()!.history.length === 0}>
+            <p class="text-xs text-slate-500">{t('Loading history...')}</p>
+          </Show>
+
+          <Show when={!state()!.historyLoading && state()!.history.length === 0}>
+            <p class="text-xs text-slate-500">{t('No transactions yet.')}</p>
+          </Show>
+
+          <For each={state()!.history}>
+            {(entry) => (
+              <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <span
+                    class={
+                      entry.direction === 'in'
+                        ? 'text-xs font-semibold text-green-700'
+                        : 'text-xs font-semibold text-red-700'
+                    }
+                  >
+                    {entry.direction === 'in' ? '+' : '-'}
+                    {entry.amount} {entry.unit}
+                  </span>
+                </div>
+                <span class="text-xs text-slate-400">
+                  {new Date(entry.createdAt * 1000).toLocaleString()}
+                </span>
+              </div>
+            )}
+          </For>
+
+          <Show when={state()!.historyLoading && state()!.history.length > 0}>
+            <p class="text-xs text-slate-400">{t('Refreshing...')}</p>
+          </Show>
         </div>
       </Show>
     </>

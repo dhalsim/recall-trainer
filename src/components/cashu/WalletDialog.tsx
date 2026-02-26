@@ -3,6 +3,8 @@ import type { Proof } from '@cashu/cashu-ts';
 import { createEffect, createSignal, Show, For } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
+type CreateWalletStep = 'form' | 'backup-phrase' | 'creating' | 'done';
+
 import { useNostrAuth } from '../../contexts/NostrAuthContext';
 import { t } from '../../i18n';
 import {
@@ -41,6 +43,7 @@ import {
   removePendingProofs,
   getTokenEventId,
   setTokenEventId,
+  readPendingAndEventIds,
 } from '../../lib/cashu/walletCache';
 import type { Nip65Relays } from '../../lib/nostr/nip65';
 import { getRelays } from '../../lib/nostr/nip65';
@@ -166,7 +169,10 @@ export function WalletDialog(props: WalletDialogProps) {
   const [pendingSentByMint, setPendingSentByMint] = createSignal<Map<string, Proof[]>>(new Map());
   const [showCreateForm, setShowCreateForm] = createSignal(false);
   const [createMintUrls, setCreateMintUrls] = createSignal<string[]>(['']);
-  const [creating, setCreating] = createSignal(false);
+  const [createStep, setCreateStep] = createSignal<CreateWalletStep>('form');
+  const [pendingMnemonic, setPendingMnemonic] = createSignal<string | null>(null);
+  const [pendingSeed, setPendingSeed] = createSignal<Uint8Array | null>(null);
+  const [clipboardCopied, setClipboardCopied] = createSignal(false);
   const [addMintUrl, setAddMintUrl] = createSignal('');
   const [mintPanel, setMintPanel] = createSignal<MintPanelType>(null);
   const [selectedMintUrl, setSelectedMintUrl] = createSignal<string | null>(null);
@@ -176,7 +182,6 @@ export function WalletDialog(props: WalletDialogProps) {
   const [loadingOp, setLoadingOp] = createSignal(false);
   const [showDiscoverPanel, setShowDiscoverPanel] = createSignal(false);
   const [generateSeed, setGenerateSeed] = createSignal(true);
-  const [generatedMnemonic, setGeneratedMnemonic] = createSignal<string | null>(null);
 
   const [discoverStore, setDiscoverStore] = createStore<DiscoverStore>({
     mints: {},
@@ -223,7 +228,8 @@ export function WalletDialog(props: WalletDialogProps) {
 
       setProofsByMint(byMint);
       setWalletState('loaded');
-      writeWalletCache(pubkey, content, byMint);
+      const { pendingProofsByMint, tokenEventIds } = readPendingAndEventIds(pubkey);
+      writeWalletCache(pubkey, content, byMint, pendingProofsByMint, tokenEventIds);
       writeSyncMeta(pubkey, 'wallet', Math.floor(Date.now() / 1000));
     } catch (err) {
       logError('[CashuWallet] Background sync failed:', err);
@@ -331,12 +337,28 @@ export function WalletDialog(props: WalletDialogProps) {
         setWalletState('loaded');
         setShowCreateForm(false);
         setCreateMintUrls(['']);
-        writeWalletCache(action.pubkey, action.content, emptyProofs);
+        const emptyPending = readPendingAndEventIds(action.pubkey);
+
+        writeWalletCache(
+          action.pubkey,
+          action.content,
+          emptyProofs,
+          emptyPending.pendingProofsByMint,
+          emptyPending.tokenEventIds,
+        );
       } else {
         setWalletContent(action.content);
         setAddMintUrl('');
         setShowDiscoverPanel(false);
-        writeWalletCache(action.pubkey, action.content, proofsByMint());
+        const pendingData = readPendingAndEventIds(action.pubkey);
+
+        writeWalletCache(
+          action.pubkey,
+          action.content,
+          proofsByMint(),
+          pendingData.pendingProofsByMint,
+          pendingData.tokenEventIds,
+        );
       }
 
       return { success: true };
@@ -438,7 +460,7 @@ export function WalletDialog(props: WalletDialogProps) {
     }
   };
 
-  const handleCreateWallet = async (): Promise<void> => {
+  const handleCreateWalletPhase1 = async (): Promise<void> => {
     const pubkey = auth.pubkey();
 
     if (!pubkey) {
@@ -455,18 +477,45 @@ export function WalletDialog(props: WalletDialogProps) {
       return;
     }
 
-    setCreating(true);
+    if (generateSeed()) {
+      const { mnemonic, seed } = await generateAndConvertMnemonic();
+      setPendingMnemonic(mnemonic);
+      setPendingSeed(seed);
+      setCreateStep('backup-phrase');
+
+      return;
+    }
+
+    await handleCreateWalletPhase2(null, null);
+  };
+
+  const handleCreateWalletPhase2 = async (
+    _mnemonic: string | null,
+    _seed: Uint8Array | null,
+  ): Promise<void> => {
+    const pubkey = auth.pubkey();
+
+    if (!pubkey) {
+      setErrorMessage(t('Could not get public key.'));
+
+      return;
+    }
+
+    const urls = createMintUrls().filter((u) => u.trim().length > 0);
+
+    setCreateStep('creating');
     setErrorMessage(null);
 
     try {
       const privkey = generateRandomHexString(64);
       const content: Nip60WalletContent = { privkey, mints: urls };
 
-      if (generateSeed()) {
-        const { mnemonic, seed } = await generateAndConvertMnemonic();
-        await saveSeedToCache(pubkey, seed, auth.nip44Encrypt);
-        setGeneratedMnemonic(mnemonic);
+      if (pendingSeed()) {
+        await saveSeedToCache(pubkey, pendingSeed()!, auth.nip44Encrypt);
       }
+
+      setPendingMnemonic(null);
+      setPendingSeed(null);
 
       const completed = await runWalletAction({ type: 'create_wallet', pubkey, content });
 
@@ -477,11 +526,12 @@ export function WalletDialog(props: WalletDialogProps) {
       for (const mintUrl of urls) {
         await fetchAndStoreMintData(mintUrl);
       }
+
+      setCreateStep('done');
     } catch (err) {
       logError('[CashuWallet] Create failed:', err);
       setErrorMessage(t('Failed to create wallet.'));
-    } finally {
-      setCreating(false);
+      setCreateStep('backup-phrase');
     }
   };
 
@@ -528,7 +578,15 @@ export function WalletDialog(props: WalletDialogProps) {
     const pk = auth.pubkey();
 
     if (pk) {
-      writeWalletCache(pk, updated, proofsByMint());
+      const pendingData = readPendingAndEventIds(pk);
+
+      writeWalletCache(
+        pk,
+        updated,
+        proofsByMint(),
+        pendingData.pendingProofsByMint,
+        pendingData.tokenEventIds,
+      );
     }
 
     void (async () => {
@@ -583,7 +641,15 @@ export function WalletDialog(props: WalletDialogProps) {
     const pk = auth.pubkey();
 
     if (pk) {
-      writeWalletCache(pk, updated, nextProofsByMint);
+      const pendingData = readPendingAndEventIds(pk);
+
+      writeWalletCache(
+        pk,
+        updated,
+        nextProofsByMint,
+        pendingData.pendingProofsByMint,
+        pendingData.tokenEventIds,
+      );
     }
 
     void (async () => {
@@ -780,7 +846,15 @@ export function WalletDialog(props: WalletDialogProps) {
         const pk = auth.pubkey();
 
         if (wc && pk) {
-          writeWalletCache(pk, wc, proofsByMint());
+          const pendingData = readPendingAndEventIds(pk);
+
+          writeWalletCache(
+            pk,
+            wc,
+            proofsByMint(),
+            pendingData.pendingProofsByMint,
+            pendingData.tokenEventIds,
+          );
         }
 
         const oldTokenEventId = pk ? getTokenEventId(pk, mintUrl) : null;
@@ -920,7 +994,15 @@ export function WalletDialog(props: WalletDialogProps) {
         const wc = walletContent();
 
         if (wc && pk) {
-          writeWalletCache(pk, wc, proofsByMint());
+          const pendingData = readPendingAndEventIds(pk);
+
+          writeWalletCache(
+            pk,
+            wc,
+            proofsByMint(),
+            pendingData.pendingProofsByMint,
+            pendingData.tokenEventIds,
+          );
         }
 
         const oldTokenEventId = pk ? getTokenEventId(pk, mintUrl) : null;
@@ -1138,7 +1220,15 @@ export function WalletDialog(props: WalletDialogProps) {
       const wc = walletContent();
 
       if (wc && pk) {
-        writeWalletCache(pk, wc, proofsByMintUrl);
+        const pendingData = readPendingAndEventIds(pk);
+
+        writeWalletCache(
+          pk,
+          wc,
+          proofsByMintUrl,
+          pendingData.pendingProofsByMint,
+          pendingData.tokenEventIds,
+        );
       }
 
       console.log('[CashuWallet] Cleanup complete. Remaining proofs:', proofsByMintUrl.size);
@@ -1234,6 +1324,8 @@ export function WalletDialog(props: WalletDialogProps) {
       onReceiveSubmit: () => void handleReceive(),
       onSendSubmit: () => void handleSend(),
       onClosePanel: closeMintPanel,
+      history: mintHistory(),
+      historyLoading: historyLoading(),
     };
   };
 
@@ -1348,11 +1440,83 @@ export function WalletDialog(props: WalletDialogProps) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void handleCreateWallet()}
-                      disabled={creating()}
+                      onClick={() => void handleCreateWalletPhase1()}
+                      disabled={createStep() === 'creating'}
                       class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
                     >
-                      {creating() ? t('Creating wallet...') : t('Create Wallet')}
+                      {createStep() === 'creating' ? t('Creating wallet...') : t('Create Wallet')}
+                    </button>
+                  </div>
+                </div>
+              </Show>
+
+              <Show when={walletState() === 'no-wallet' && createStep() === 'backup-phrase'}>
+                <div class="space-y-4">
+                  <div class="rounded-xl border-2 border-amber-400 bg-amber-50 p-4">
+                    <p class="text-sm font-semibold text-amber-900">
+                      {t('Write down your recovery phrase')}
+                    </p>
+                    <p class="mt-1 text-xs text-amber-700">
+                      {t(
+                        'These 12 words are the only way to recover your wallet. Write them down now. They will not be shown again.',
+                      )}
+                    </p>
+
+                    <div class="mt-3 grid grid-cols-3 gap-2">
+                      <For each={pendingMnemonic()?.split(' ') ?? []}>
+                        {(word, i) => (
+                          <div class="flex items-center gap-1 rounded bg-white px-2 py-1 text-xs">
+                            <span class="text-slate-400 w-4">{i() + 1}.</span>
+                            <span class="font-mono font-medium text-slate-800">{word}</span>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(pendingMnemonic() ?? '');
+                      setClipboardCopied(true);
+
+                      setTimeout(() => {
+                        void navigator.clipboard.writeText('');
+                        setClipboardCopied(false);
+                      }, 30000);
+                    }}
+                    class="w-full rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+                  >
+                    {clipboardCopied()
+                      ? t('Copied — clipboard clears in 30s')
+                      : t('Dangerously copy to clipboard')}
+                  </button>
+
+                  <Show when={errorMessage()}>
+                    <p class="text-sm text-red-600">{errorMessage()}</p>
+                  </Show>
+
+                  <div class="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingMnemonic(null);
+                        setPendingSeed(null);
+                        setCreateStep('form');
+                        setErrorMessage(null);
+                      }}
+                      class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      {t('Back')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleCreateWalletPhase2(pendingMnemonic(), pendingSeed())
+                      }
+                      class="flex-1 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                    >
+                      {t("I've backed it up — Create Wallet")}
                     </button>
                   </div>
                 </div>
@@ -1373,28 +1537,6 @@ export function WalletDialog(props: WalletDialogProps) {
 
               <Show when={walletState() === 'loaded' && !mintPanel() && !showDiscoverPanel()}>
                 <div class="mt-4 space-y-4">
-                  <Show when={generatedMnemonic()}>
-                    <section class="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
-                      <div class="space-y-2">
-                        <p class="text-sm font-semibold text-amber-800">{t('Recovery Phrase')}</p>
-                        <p class="text-xs text-amber-700">
-                          {t(
-                            'Write these words down and store them safely. You will need them to recover your wallet.',
-                          )}
-                        </p>
-                        <p class="mt-2 rounded-lg bg-white p-3 text-sm font-mono text-slate-800 leading-relaxed">
-                          {generatedMnemonic()}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => navigator.clipboard.writeText(generatedMnemonic()!)}
-                          class="mt-2 text-xs text-blue-600 hover:underline"
-                        >
-                          {t('Copy to clipboard')}
-                        </button>
-                      </div>
-                    </section>
-                  </Show>
                   <div>
                     <p class="text-sm font-medium text-slate-700">{t('Mints')}</p>
                     <ul class="mt-2 space-y-3">
@@ -1476,7 +1618,9 @@ export function WalletDialog(props: WalletDialogProps) {
                       setWalletContent(null);
                       setProofsByMint(new Map());
                       setShowCreateForm(true);
-                      setGeneratedMnemonic(null);
+                      setCreateStep('form');
+                      setPendingMnemonic(null);
+                      setPendingSeed(null);
                     }}
                     class="mt-4 w-full rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
                   >

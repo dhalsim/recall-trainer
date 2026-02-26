@@ -199,6 +199,81 @@ export async function decryptTokenContent(
   }
 }
 
+export type HistoryEntry = {
+  id: string;
+  direction: 'in' | 'out';
+  amount: string;
+  unit: string;
+  createdAt: number;
+  refs: { eventId: string; status: 'created' | 'destroyed' }[];
+};
+
+export async function queryHistory(relays: string[], pubkey: string): Promise<Event[]> {
+  const filter: Filter = {
+    kinds: [NUTZAP_REDEMPTION_KIND],
+    authors: [pubkey],
+    limit: 200,
+  };
+
+  return pool.querySync(relays, filter);
+}
+
+export async function decryptHistoryContent(
+  event: Event,
+  nip44Decrypt: Nip44Decrypt,
+  userPubkey: string,
+): Promise<HistoryEntry | null> {
+  try {
+    const plain = await nip44Decrypt(userPubkey, event.content);
+    const parsed = JSON.parse(plain) as unknown;
+
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
+
+    let direction: 'in' | 'out' = 'in';
+    let amount = '0';
+    let unit = 'sat';
+    const refs: { eventId: string; status: 'created' | 'destroyed' }[] = [];
+
+    for (const row of parsed) {
+      if (!Array.isArray(row) || row.length < 2) {
+        continue;
+      }
+
+      const key = String(row[0]);
+      const value = String(row[1]);
+
+      if (key === 'direction' && (value === 'in' || value === 'out')) {
+        direction = value;
+      } else if (key === 'amount') {
+        amount = value;
+      } else if (key === 'unit') {
+        unit = value;
+      } else if (key === 'e' && row.length >= 4) {
+        const status = String(row[3]);
+
+        if (status === 'created' || status === 'destroyed') {
+          refs.push({ eventId: value, status });
+        }
+      }
+    }
+
+    return {
+      id: event.id,
+      direction,
+      amount,
+      unit,
+      createdAt: event.created_at,
+      refs,
+    };
+  } catch (err) {
+    logError('[nip60] Failed to decrypt history content:', err);
+
+    return null;
+  }
+}
+
 /**
  * Sum proof amounts grouped by mint URL. Returns a Map<mintUrl, totalAmount>.
  */
@@ -239,7 +314,7 @@ export async function publishTokenStatusEvent(
     const encryptedContent = await nip44Encrypt(pubkey, content);
 
     const template: EventTemplate = {
-      kind: 7376,
+      kind: NUTZAP_REDEMPTION_KIND,
       created_at: Math.floor(Date.now() / 1000),
       tags: [],
       content: encryptedContent,
