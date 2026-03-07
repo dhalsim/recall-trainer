@@ -115,8 +115,8 @@ function persistCounter(db: Database, op: OperationCounters): void {
     `  countersReserved: keyset=${op.keysetId} start=${op.start} count=${op.count} next=${op.next}`
   );
   db.run(
-    "INSERT OR REPLACE INTO counters (keyset_id, next) VALUES ($keysetId, $next)",
-    { $keysetId: op.keysetId, $next: op.next }
+    "INSERT OR REPLACE INTO counters (keyset_id, next) VALUES (?, ?)",
+    [op.keysetId, op.next]
   );
   log.ok(`  Counter for ${op.keysetId} persisted → next=${op.next}`);
 }
